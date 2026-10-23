@@ -40,12 +40,13 @@ SiYuan workspace — no cloud account is required.
   SVG; the editor's floating bar also has **Copy PNG / Copy SVG**.
 - **Circuit management**: the picker's **⋯** menu and the circuit dock support
   open, duplicate, rename, delete and version history.
-- **Online Gallery**: open the hosted Analog Canvas Gallery in a SiYuan tab,
-  sign in and browse community circuits. Copy a circuit from the online canvas,
-  then click **Insert circuit** in the local editor to place it on the current
-  drawing.
+- **Online Gallery sidebar**: open the hosted Analog Canvas Gallery in a
+  resizable SiYuan sidebar, sign in and browse community circuits. Copy a
+  circuit from the online canvas, then click **Insert circuit** in the local
+  editor to place it on the current drawing. The same entry is available from
+  Settings.
 - **Import projects**: bring an `.icproj.json` exported from the online editor
-  into `assets/analog-canvas` from the picker or the Gallery tab.
+  into `assets/analog-canvas` from the picker or the Gallery sidebar.
 - **Optional interactive preview mode**: insert a preview block instead of a
   static image (Settings → Insert as). The preview now loads the exported image
   instead of running a second renderer, so it uses much less memory.
@@ -81,12 +82,13 @@ SiYuan workspace — no cloud account is required.
 5. The picker's **⋯** menu manages circuits (open, duplicate, rename, delete,
    version history). The left circuit dock offers the same actions.
 6. To borrow a circuit from the community, open **Online Gallery** from the
-   top bar, the picker, or the floating button in the circuit editor. Sign in,
+   top bar, the picker, the floating button in the circuit editor, or
+   **Settings → Online Gallery**. It opens as a resizable sidebar. Sign in,
    open a circuit, then select all on its canvas (`Ctrl/Cmd+A`) and copy
    (`Ctrl/Cmd+C`). Switch back to the circuit editor, click **Insert circuit**
    (or press `Ctrl/Cmd+Shift+V`) and click the canvas to place the drawing.
    Only the drawing is inserted; the target project's identity is kept.
-7. If copying from the embedded Gallery tab is not possible, use **Browser** to
+7. If copying from the embedded sidebar is not possible, use **Browser** to
    open the Gallery normally, or use **File → Export → Project File…** there
    and **Import** in the picker.
 
@@ -131,8 +133,8 @@ its `custom-data-assets` attribute and the image path in
   (AGPL-3.0-only).
 - The editor's cloud features (account, Cloud Projects, Community Gallery,
   Agent, hosted simulation) are not bundled into the offline editor. The Online
-  Gallery tab links to the hosted service instead; inserting its circuits uses
-  the system clipboard.
+  Gallery sidebar links to the hosted service instead; inserting its circuits
+  uses the system clipboard.
 - PDF export and the RNL format are not included; SVG/PNG output and
   SPICE/Spectre netlist export still work offline.
 - Local user-component library is currently disabled.
@@ -158,12 +160,13 @@ while iterating on plugin code.
 - The bundled editor UI is English; the plugin's own dialogs are Chinese/English.
 - Cloud Projects, Community Gallery, Agent, hosted simulation, the local
   user-component library, PDF export and the RNL format are not bundled. The
-  Online Gallery tab is an optional online surface; offline SVG/PNG output,
+  Online Gallery sidebar is an optional online surface; offline SVG/PNG output,
   SPICE/Spectre netlist export and hierarchy still work.
 - The Online Gallery requires account sign-in and internet access. Because it
   is a cross-origin page, circuits are transferred with the clipboard rather
-  than by direct drag-and-drop; if sign-in or copy is blocked in the tab, open
-  the Gallery in a normal browser and use the project-file import fallback.
+  than by direct drag-and-drop; if sign-in or copy is blocked in the sidebar,
+  open the Gallery in a normal browser and use the project-file import
+  fallback.
 - Use one circuit per editor tab. The editor can open several project tabs
   internally, but the SiYuan tab tracks the first project for its title and
   export metadata.

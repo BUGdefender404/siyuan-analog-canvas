@@ -1,5 +1,6 @@
 import { Dialog, openTab } from "siyuan";
 import {
+  GALLERY_DOCK_TYPE,
   GALLERY_EDITOR_URL,
   GALLERY_HOME_URL,
   GALLERY_ICON_ID,
@@ -35,6 +36,7 @@ function galleryUrl(view: GalleryView): string {
 export class GalleryManager {
   private host: GalleryHost;
   private element: HTMLElement | null = null;
+  private dockElement: HTMLElement | null = null;
   private tabId = "";
   private dialog?: Dialog;
   private view: GalleryView = "home";
@@ -48,14 +50,15 @@ export class GalleryManager {
       this.dialog.element.style.zIndex = "9999";
       return;
     }
+    if (this.host.isMobile) {
+      this.openDialog();
+      return;
+    }
+    if (this.activateDock()) return;
     if (this.element?.isConnected) {
       if (!this.focus()) {
         console.info("Analog Canvas online gallery is open in another tab");
       }
-      return;
-    }
-    if (this.host.isMobile) {
-      this.openDialog();
       return;
     }
     void openTab({
@@ -78,8 +81,13 @@ export class GalleryManager {
   mount(element: HTMLElement, tabId = ""): void {
     this.element = element;
     this.tabId = tabId || this.tabId;
-    element.classList.add("ac-gallery-host");
-    element.style.height = "100%";
+    this.prepare(element);
+    this.render(element);
+  }
+
+  mountDock(element: HTMLElement): void {
+    this.dockElement = element;
+    this.prepare(element);
     this.render(element);
   }
 
@@ -88,6 +96,28 @@ export class GalleryManager {
       this.element = null;
       this.tabId = "";
     }
+  }
+
+  detachDock(element?: HTMLElement): void {
+    if (!element || element === this.dockElement) this.dockElement = null;
+  }
+
+  private prepare(element: HTMLElement): void {
+    element.classList.add("ac-gallery-host");
+    element.style.display = "flex";
+    element.style.flexDirection = "column";
+    element.style.height = "100%";
+    element.style.minHeight = "200px";
+    element.style.overflow = "hidden";
+  }
+
+  private activateDock(): boolean {
+    const item = document.querySelector(
+      `.dock__item[data-type="${CSS.escape(GALLERY_DOCK_TYPE)}"]`,
+    ) as HTMLElement | null;
+    if (!item || item.offsetParent === null) return false;
+    if (!item.classList.contains("dock__item--active")) item.click();
+    return true;
   }
 
   private openDialog(): void {
@@ -122,8 +152,9 @@ export class GalleryManager {
   }
 
   private render(element: HTMLElement): void {
-    if (element.dataset.acGallery === "1") return;
-    element.dataset.acGallery = "1";
+    // A dock may be initialized more than once; only rebuild when its DOM was
+    // actually cleared. A stale dataset flag previously left a blank tab.
+    if (element.querySelector(".ac-gallery")) return;
     const home = galleryUrl("home");
     element.innerHTML = `<div class="ac-gallery">
   <div class="ac-gallery__toolbar">

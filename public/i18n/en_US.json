@@ -106,6 +106,8 @@
   "galleryExternal": "Browser",
   "galleryLoading": "Loading the online gallery…",
   "galleryExternalFailed": "Could not open a browser window; visit analog-canvas.tokenzhang.com manually.",
+  "gallerySettingsOpen": "Open sidebar",
+  "gallerySettingsHint": "Sign in to browse community circuits. Copy a circuit on the online canvas, then click Insert circuit in the circuit editor to place it here.",
   "insertCircuitClipboard": "Insert circuit",
   "insertCircuitClipboardHint": "Insert a circuit copied from the online gallery",
   "clipboardNoCircuit": "No circuit in the clipboard. Copy one in the online gallery first.",

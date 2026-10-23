@@ -12,6 +12,7 @@ export const GALLERY_EDITOR_URL = "https://analog-canvas.tokenzhang.com/editor";
 export const TAB_TYPE = `${PLUGIN_NAME}-tab`;
 export const GALLERY_TAB_TYPE = `${PLUGIN_NAME}-gallery-tab`;
 export const DOCK_TYPE = `${PLUGIN_NAME}-dock`;
+export const GALLERY_DOCK_TYPE = `${PLUGIN_NAME}-gallery-dock`;
 export const ICON_ID = "iconAnalogCanvas";
 export const GALLERY_ICON_ID = "iconAnalogCanvasGallery";
 export const BLOCK_ATTR = "custom-data-assets";

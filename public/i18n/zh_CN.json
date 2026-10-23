@@ -106,6 +106,8 @@
   "galleryExternal": "浏览器打开",
   "galleryLoading": "正在加载在线图库…",
   "galleryExternalFailed": "浏览器窗口未能打开，请手动访问 analog-canvas.tokenzhang.com",
+  "gallerySettingsOpen": "打开侧边栏",
+  "gallerySettingsHint": "登录后可浏览社区电路。在在线画布复制电路后，回到电路编辑器点「插入电路」即可放到当前图纸。",
   "insertCircuitClipboard": "插入电路",
   "insertCircuitClipboardHint": "从剪贴板插入在线图库中复制的电路",
   "clipboardNoCircuit": "剪贴板里没有电路，请先在在线图库中复制一个电路",

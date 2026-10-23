@@ -446,6 +446,10 @@
   width: 96px;
 }
 
+.ac-settings__gallery {
+  flex: none;
+}
+
 .ac-settings__autosave {
   flex: none;
 }

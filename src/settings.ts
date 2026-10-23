@@ -8,6 +8,7 @@ export interface SettingsHost {
   isMobile: boolean;
   saveSettings(settings: AcSettings): Promise<void>;
   pickExportDir(): Promise<string | null>;
+  openOnlineGallery(): void;
   notify(message: string, type?: "info" | "error"): void;
 }
 
@@ -62,6 +63,13 @@ export function openSettings(host: SettingsHost): void {
     <input class="b3-text-field ac-settings__history" type="number" min="5" max="100" step="5" value="${host.settings.historyLimit}" />
   </label>
   <div class="ac-settings__row">
+    <span>${escapeHtml(host.i18n.onlineGallery)}</span>
+    <button class="b3-button b3-button--outline ac-settings__gallery">${escapeHtml(
+      host.i18n.gallerySettingsOpen,
+    )}</button>
+  </div>
+  <p class="ac-settings__note">${escapeHtml(host.i18n.gallerySettingsHint)}</p>
+  <div class="ac-settings__row">
     <span>${escapeHtml(host.i18n.defaultExportDir)}</span>
     <div class="ac-settings__path">
       <input class="b3-text-field ac-settings__export-dir" type="text" spellcheck="false" value="${escapeHtml(host.settings.exportDir)}" placeholder="${escapeHtml(host.i18n.exportDirPlaceholder)}" />
@@ -95,6 +103,10 @@ export function openSettings(host: SettingsHost): void {
   mode.value = host.settings.insertMode;
   format.value = host.settings.imageFormat;
   content.querySelector(".b3-button--cancel")?.addEventListener("click", () => dialog.destroy());
+  content.querySelector(".ac-settings__gallery")?.addEventListener("click", () => {
+    dialog.destroy();
+    host.openOnlineGallery();
+  });
   browse.addEventListener("click", async () => {
     browse.disabled = true;
     try {

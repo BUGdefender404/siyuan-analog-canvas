@@ -13,6 +13,7 @@ import {
   ASSET_PREFIX,
   DEFAULT_PREVIEW_HEIGHT,
   DOCK_TYPE,
+  GALLERY_DOCK_TYPE,
   GALLERY_ICON_ID,
   GALLERY_TAB_TYPE,
   ICON_ID,
@@ -198,6 +199,25 @@ export default class AnalogCanvasPlugin
         init() {
           const custom = this as unknown as Custom;
           plugin.dock.mount(custom.element as HTMLElement);
+        },
+      });
+      this.addDock({
+        config: {
+          position: "RightTop",
+          size: { width: 460, height: 0 },
+          icon: GALLERY_ICON_ID,
+          title: this.i18n.onlineGallery,
+          show: false,
+        },
+        data: {},
+        type: GALLERY_DOCK_TYPE,
+        init() {
+          const custom = this as unknown as Custom;
+          plugin.galleryManager.mountDock(custom.element as HTMLElement);
+        },
+        destroy() {
+          const custom = this as unknown as { element?: HTMLElement };
+          plugin.galleryManager.detachDock(custom.element);
         },
       });
     }

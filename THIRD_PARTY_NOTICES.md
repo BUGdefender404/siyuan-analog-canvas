@@ -47,7 +47,7 @@ bundled circuit templates are the upstream example projects (AGPL-3.0-only).
 
 ## Online Gallery
 
-The optional Online Gallery tab links to
+The optional Online Gallery sidebar links to
 <https://analog-canvas.tokenzhang.com/>, the hosted Analog Canvas Community
 Gallery. No Gallery page, account data or community circuit is bundled with
 this plugin. Gallery circuits remain subject to their authors' terms; the

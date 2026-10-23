@@ -17,16 +17,16 @@
   images and exports.
 - **Copy to clipboard**: copy PNG or SVG from the note image menu or the
   editor's floating action bar.
-- **Online Gallery tab**: browse the hosted Analog Canvas Gallery from a
-  SiYuan tab (top bar, picker, dock and editor floating bar), with quick links
-  to the Gallery and online editor, refresh, browser fallback and project
-  import.
+- **Online Gallery sidebar**: browse the hosted Analog Canvas Gallery from a
+  resizable SiYuan sidebar (top bar, picker, dock, editor floating bar or
+  Settings), with quick links to the Gallery and online editor, refresh,
+  browser fallback and project import. The empty-tab fallback is fixed.
 - **Insert a circuit from the clipboard**: copy a whole circuit or a selection
   in the online Gallery, then use **Insert circuit** (or
   `Ctrl/Cmd+Shift+V`) in the local editor to place it on the current drawing.
   The payload is validated as an Analog Canvas circuit envelope first.
 - **Import `.icproj.json`**: load a project exported from the online editor
-  into `assets/analog-canvas` from the picker or the Gallery tab.
+  into `assets/analog-canvas` from the picker or the Gallery sidebar.
 - **Slimmer bundle**: the static image preview replaces the bundled SVG
   renderer, PDF export and the RNL WebAssembly runtime are removed, and module
   preloading is disabled. The editor is about 8 MB (was 20 MB); the packaged
