@@ -1,0 +1,9 @@
+node_modules/
+dev/
+dist/
+package.zip
+_upstream/
+_upstream-cache/
+.DS_Store
+*.log
+*.local

@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.16.0
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Enable Corepack for the upstream build
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.16.0 --activate
+          pnpm --version
+
+      - name: Cache pinned upstream checkout
+        uses: actions/cache@v4
+        with:
+          path: _upstream
+          key: analog-canvas-729cfb1ed7e01f3ba5e56bd1aca41ae03731aab4-v1
+
+      - name: Install plugin dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build plugin, editor and SVG preview
+        run: pnpm build
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+      - name: Create package.zip
+        run: pnpm package
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: package.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: package.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true

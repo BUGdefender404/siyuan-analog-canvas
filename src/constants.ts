@@ -1,0 +1,15 @@
+export const PLUGIN_NAME = "siyuan-analog-canvas";
+export const ASSET_DIR = "analog-canvas";
+export const ASSET_PREFIX = `assets/${ASSET_DIR}`;
+export const DATA_ASSET_DIR = `/data/${ASSET_PREFIX}`;
+export const TEMPLATE_URL = `/plugins/${PLUGIN_NAME}/templates/blank.icproj.json`;
+export const EDITOR_PATH = `/plugins/${PLUGIN_NAME}/editor/index.html`;
+export const PREVIEW_PATH = `/plugins/${PLUGIN_NAME}/editor/preview/siyuan-preview.html`;
+export const TAB_TYPE = `${PLUGIN_NAME}-tab`;
+export const DOCK_TYPE = `${PLUGIN_NAME}-dock`;
+export const ICON_ID = "iconAnalogCanvas";
+export const BLOCK_ATTR = "custom-data-assets";
+export const DEFAULT_PREVIEW_HEIGHT = 340;
+export const PROJECT_EXT = ".icproj.json";
+export const IMAGE_EXTENSIONS = ["png", "svg"] as const;
+export type ImageExtension = (typeof IMAGE_EXTENSIONS)[number];

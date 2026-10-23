@@ -1,0 +1,55 @@
+{
+  "name": "siyuan-analog-canvas",
+  "author": "Ray Zhang",
+  "url": "https://github.com/BUGdefender404/siyuan-analog-canvas",
+  "version": "0.1.0",
+  "minAppVersion": "3.1.0",
+  "backends": [
+    "windows",
+    "linux",
+    "darwin",
+    "android",
+    "ios",
+    "harmony",
+    "docker"
+  ],
+  "frontends": [
+    "desktop",
+    "desktop-window",
+    "mobile",
+    "browser-desktop",
+    "browser-mobile"
+  ],
+  "displayName": {
+    "default": "Analog Canvas",
+    "zh-CN": "Analog Canvas 电路图"
+  },
+  "description": {
+    "default": "Draw and edit professional analog schematics inside SiYuan",
+    "zh-CN": "在思源笔记中绘制、编辑专业模拟电路原理图"
+  },
+  "readme": {
+    "default": "README.md",
+    "zh-CN": "README_zh_CN.md"
+  },
+  "icon": "icon.png",
+  "preview": "preview.png",
+  "keywords": [
+    "analog",
+    "circuit",
+    "schematic",
+    "electronics",
+    "spice",
+    "电路图",
+    "模拟电路"
+  ],
+  "kernels": [
+    "windows",
+    "linux",
+    "darwin",
+    "android",
+    "ios",
+    "harmony",
+    "docker"
+  ]
+}

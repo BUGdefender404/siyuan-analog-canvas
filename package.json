@@ -1,0 +1,32 @@
+{
+  "name": "siyuan-analog-canvas",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Analog Canvas schematic editor for SiYuan",
+  "repository": "https://github.com/BUGdefender404/siyuan-analog-canvas",
+  "homepage": "https://github.com/BUGdefender404/siyuan-analog-canvas",
+  "author": "Ray Zhang",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@11.16.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development vite build --watch",
+    "build:plugin": "cross-env NODE_ENV=production vite build",
+    "build:editor": "node scripts/build-editor.mjs",
+    "build": "node scripts/build.mjs",
+    "package": "node scripts/package.mjs",
+    "make-link": "node scripts/make-link.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.0",
+    "cross-env": "^10.1.0",
+    "fflate": "^0.8.2",
+    "siyuan": "1.2.5",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.4",
+    "vite-plugin-static-copy": "^4.1.1"
+  }
+}

@@ -1,0 +1,127 @@
+# Analog Canvas 思源插件
+
+[English](./README.md)
+
+在思源笔记里绘制专业模拟电路原理图。插件内置开源
+[Analog Canvas](https://github.com/cascode-ai/analog-canvas) 编辑器，完全离线
+可用，不需要注册账号，电路文件直接保存在思源工作空间里。
+
+![Analog Canvas 嵌入思源](./preview.png)
+
+## 功能
+
+- **画完直接插入为普通图片**：默认 PNG，可选 SVG；图片就像思源里的普通图片，
+  是笔记正文的一部分。
+- **源文件仍可编辑**：每张图片对应一个
+  `assets/analog-canvas/*.icproj.json` 源文件。右键图片 →「编辑电路图」即可
+  重新打开。
+- **一键插入**：编辑器里点击浮动按钮「插入到笔记」；插件会先保存源文件，再
+  导出图片，并插入到输入 `/ac` 的那个块后面。
+- **完整编辑器标签页**：器件库、层次化 Cell、连线、标签、属性和网表编辑。
+- **Ctrl/Cmd+S 直接保存**到 `assets/analog-canvas` 下的 `.icproj.json`。
+- **导出 SVG / PNG / PDF / SPICE / Spectre**：通过编辑器「File → Export」
+  打开系统保存对话框，可自由选择保存位置；在插件设置里可以指定默认导出
+  文件夹。
+- **电路管理**：选择器的「⋯」菜单和左侧电路面板支持打开、复制、重命名、删除。
+- **可选交互预览**：设置里可切换为插入交互式预览块。
+- **基于 assets 存储**：电路和图片随思源同步、导出和备份一起走。
+
+## 环境要求
+
+- 思源笔记 **3.1.0** 或更高版本。
+- 插件内置编辑器约 **20 MB**。
+- 推荐桌面端；移动端可正常预览，完整编辑器会以全屏对话框打开，但较重。
+
+## 使用方式
+
+1. 安装并启用插件。
+2. 在笔记中输入 `/ac`（或「插入电路图」），选择「新建电路图」或已有文件。
+3. 在编辑器标签页里画图。完成后点击浮动的 **「插入到笔记」** 按钮（默认
+   PNG）；插件会保存源文件、导出图片，并把它插入到输入 `/ac` 的那个块后面。
+   如果你只想把图导出成文件，使用 **File → Export → Drawing as PNG/SVG**，
+   插件会弹出系统保存对话框，由你选择保存位置。
+4. 右键插入的图片 →「编辑电路图」可再次编辑；改完后点浮动的
+   **「更新笔记图片」**，源 `.icproj.json` 和笔记里的图片都会同步更新。
+   在 **设置 → 默认导出目录** 可以指定导出对话框默认打开的文件夹；
+   留空则使用系统上次的位置。
+5. 选择器里的 **「⋯」** 菜单可管理电路（打开、复制、重命名、删除）；
+   左侧电路面板也有同样的操作。
+
+顶部按钮、左侧电路面板和命令面板（`Open Analog Canvas`，macOS
+`Alt+Cmd+A`）可以打开资源选择器；从这些入口打开已有工程不会自动插入，
+需要插入时请在笔记里用 `/ac`。
+
+## 存储与迁移
+
+```text
+<工作空间>/data/assets/analog-canvas/
+├── five-transistor-ota-20261023123000-ab12cde.icproj.json   # 源文件
+├── five-transistor-ota-20261023123000-ab12cde.png            # 插入的图片
+└── ...
+```
+
+电路和图片都是普通思源 assets，会随工作空间导出、同步和备份。图片块用
+`custom-data-assets` 记录源文件路径，用 `custom-ac-image-path` 记录图片路径。
+
+> 如果笔记已经引用某个 `.icproj.json`，请勿在思源之外重命名或移动它；用
+> 插件里的重命名操作会自动更新引用。
+
+## 内置内容说明
+
+- 编辑器来自上游 Analog Canvas 的**离线桌面组合**，固定在 commit
+  `729cfb1ed7e01f3ba5e56bd1aca41ae03731aab4`。
+- **未修改上游源码**；插件注入一层很小的宿主 shim，把编辑器的 `/desktop/*`
+  文件桥接映射到思源插件。
+- 不包含云端功能（账号、Cloud Projects、社区 Gallery、Agent、托管仿真），
+  离线编辑器本身不需要它们。
+- 暂未启用本地用户元件库。
+
+## 从源码构建
+
+需要 Node.js 24+、Corepack 提供的 pnpm、Git。
+
+```bash
+pnpm install
+pnpm build          # 构建插件、编辑器包和 SVG 预览页
+pnpm package        # 生成 package.zip
+pnpm make-link      # 把 dist/ 链接到思源工作空间（可用 --force）
+```
+
+`pnpm build` 会从 GitHub 拉取固定的上游 commit（失败时尝试镜像）并构建。
+只改插件代码、想复用已有编辑器产物时，可设置
+`AC_SKIP_EDITOR_BUILD=1`。
+
+## 已知限制
+
+- 内置编辑器界面是英文的；插件自身的对话框支持中英文。
+- 不包含 Cloud Projects、社区 Gallery、Agent、托管仿真和本地用户元件库。
+  本地 SPICE/Spectre 网表导出、层次化设计和 SVG/PNG/PDF 导出均可离线使用。
+- 建议一个编辑器标签页只放一个电路。编辑器内部可以再开多个工程标签，但
+  思源标签页的标题和导出元数据只跟踪最初打开的工程。
+- 更新图片后，已经打开的笔记可能仍显示缓存的旧图；重新打开笔记即可。
+- 电路正在编辑器里打开时不允许重命名，请先关闭编辑器。重命名会更新图片
+  引用；如果之前插入过可选的交互预览块，需要重新插入。
+- 默认插入静态图片；设置里可以切换成交互预览。
+- 原生「另存为」对话框仅在桌面端可用；浏览器/移动端会回退为浏览器的
+  保存/下载流程。
+- 移动端可用，但完整编辑器较重；推荐桌面端。
+
+## 插件市场
+
+插件将提交到思源官方插件市场。发布清单和 `plugins.txt` PR 步骤见
+[docs/marketplace.md](./docs/marketplace.md)。
+
+## 更新日志
+
+见 [CHANGELOG.md](./CHANGELOG.md)。
+
+## 许可证
+
+本插件采用 **AGPL-3.0-only**，因为它分发 AGPL-3.0-only 的 Analog Canvas
+构建产物。完整对应源码为“本仓库 + THIRD_PARTY_NOTICES.md 中记录的上游
+commit”。
+
+Copyright (C) 2026 Ray Zhang 及贡献者。
+
+Analog Canvas 作者：TokenZhang 及 Analog Canvas 贡献者：
+<https://github.com/cascode-ai/analog-canvas>。
