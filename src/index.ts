@@ -7,21 +7,32 @@ import {
   type Protyle,
 } from "siyuan";
 import "./index.css";
-import { AssetStore, sanitizeTitle } from "./assets";
+import { AssetStore, sanitizeTitle, titleFromFileName } from "./assets";
 import { AcBridge, type BridgeHost } from "./bridge";
 import {
   ASSET_PREFIX,
   DEFAULT_PREVIEW_HEIGHT,
   DOCK_TYPE,
+  GALLERY_ICON_ID,
+  GALLERY_TAB_TYPE,
   ICON_ID,
   PLUGIN_NAME,
   TAB_TYPE,
 } from "./constants";
-import { chooseDirectory, saveFileAs } from "./desktop";
-import { confirmDialog, promptText } from "./dialog";
+import {
+  chooseDirectory,
+  copyPngToClipboard,
+  copySvgToClipboard,
+  readClipboardText as readSystemClipboard,
+  saveFileAs,
+} from "./desktop";
+import { closeGuardDialog, confirmDialog, promptText } from "./dialog";
 import { AssetDock } from "./dock";
-import { EditorManager, type EditorHost } from "./editor";
+import { EditorManager, type EditorHost, type EditorRecord } from "./editor";
+import { GalleryManager } from "./gallery";
+import { openHistoryDialog } from "./history";
 import type { PluginHost } from "./host";
+import { importProjectFile as importProjectFromFile } from "./import";
 import {
   findImageBlocks,
   imageExtension,
@@ -33,7 +44,7 @@ import {
 import { AssetPicker } from "./picker";
 import { insertPreview, refreshPreviews } from "./preview";
 import { openSettings, type SettingsHost } from "./settings";
-import type { AcAsset, AcSettings, ImageFormat, SavedFile } from "./types";
+import type { AcAsset, AcSettings, AcVersion, ImageFormat, SavedFile } from "./types";
 
 interface PendingInsert {
   blockId: string;
@@ -50,21 +61,29 @@ export default class AnalogCanvasPlugin
     insertMode: "image",
     imageFormat: "png",
     exportDir: "",
+    exportScale: 3,
+    autosave: true,
+    historyLimit: 20,
   };
   assetStore = new AssetStore();
   isMobile = false;
 
   private bridge!: AcBridge;
   private editorManager!: EditorManager;
+  private galleryManager!: GalleryManager;
   private picker!: AssetPicker;
   private dock!: AssetDock;
   private pendingInserts = new Map<string, PendingInsert>();
+  private dirtyAssets = new Set<string>();
+  private dirtyWaiters = new Map<string, Array<(dirty: boolean) => void>>();
+  private allowCloseTab = "";
 
   async onload(): Promise<void> {
     this.isMobile = ["mobile", "browser-mobile"].includes(getFrontend());
     await this.loadSettings();
     this.bridge = new AcBridge(this);
     this.editorManager = new EditorManager(this);
+    this.galleryManager = new GalleryManager(this);
     this.picker = new AssetPicker(this);
     this.dock = new AssetDock(this);
     this.bridge.attach();
@@ -75,6 +94,12 @@ export default class AnalogCanvasPlugin
   <path d="M17 16h4M21 11v10M21 16h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
   <circle cx="4" cy="16" r="1.5" fill="currentColor"/>
   <circle cx="27" cy="16" r="1.5" fill="currentColor"/>
+</symbol>
+<symbol id="${GALLERY_ICON_ID}" viewBox="0 0 32 32">
+  <rect x="4" y="6" width="10" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+  <rect x="18" y="6" width="10" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+  <rect x="4" y="18" width="10" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+  <path d="M18 22h10M23 18v8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
 </symbol>`);
 
     const plugin = this;
@@ -92,6 +117,25 @@ export default class AnalogCanvasPlugin
           },
           custom.tab?.id ?? element.parentElement?.getAttribute("data-id") ?? "",
         );
+      },
+      beforeDestroy(this: Custom) {
+        const data = this.data as { asset?: string } | undefined;
+        if (data?.asset) plugin.setEditorDirty(data.asset, false);
+      },
+    });
+
+    this.addTab({
+      type: GALLERY_TAB_TYPE,
+      init() {
+        const custom = this as unknown as Custom;
+        const element = custom.element as HTMLElement;
+        plugin.galleryManager.mount(
+          element,
+          custom.tab?.id ?? element.parentElement?.getAttribute("data-id") ?? "",
+        );
+      },
+      beforeDestroy(this: Custom) {
+        plugin.galleryManager.detach(this.tab?.id ?? "");
       },
     });
 
@@ -118,6 +162,13 @@ export default class AnalogCanvasPlugin
       },
     });
 
+    this.addCommand({
+      langKey: "openOnlineGallery",
+      callback: () => {
+        this.openOnlineGallery();
+      },
+    });
+
     if (!this.isMobile) {
       this.addTopBar({
         icon: ICON_ID,
@@ -125,6 +176,14 @@ export default class AnalogCanvasPlugin
         position: "right",
         callback: () => {
           void this.picker.pick("open");
+        },
+      });
+      this.addTopBar({
+        icon: GALLERY_ICON_ID,
+        title: this.i18n.onlineGallery,
+        position: "right",
+        callback: () => {
+          this.openOnlineGallery();
         },
       });
       this.addDock({
@@ -145,12 +204,18 @@ export default class AnalogCanvasPlugin
 
     this.eventBus.on("open-siyuan-url-plugin", this.handleOpenUrl);
     this.eventBus.on("open-menu-image", this.handleImageMenu);
+    window.addEventListener("beforeunload", this.handleBeforeUnload);
+    document.addEventListener("click", this.handleTabClose, true);
+    document.addEventListener("keydown", this.handleTabCloseKey, true);
   }
 
   onunload(): void {
     this.bridge?.detach();
     this.eventBus.off("open-siyuan-url-plugin", this.handleOpenUrl);
     this.eventBus.off("open-menu-image", this.handleImageMenu);
+    window.removeEventListener("beforeunload", this.handleBeforeUnload);
+    document.removeEventListener("click", this.handleTabClose, true);
+    document.removeEventListener("keydown", this.handleTabCloseKey, true);
   }
 
   openSetting(): void {
@@ -177,6 +242,13 @@ export default class AnalogCanvasPlugin
       insertMode: value?.insertMode === "interactive" ? "interactive" : "image",
       imageFormat: value?.imageFormat === "svg" ? "svg" : "png",
       exportDir: typeof value?.exportDir === "string" ? value.exportDir.trim() : "",
+      exportScale: Number.isFinite(Number(value?.exportScale))
+        ? Math.min(6, Math.max(1, Math.round(Number(value?.exportScale))))
+        : 3,
+      autosave: value?.autosave !== false,
+      historyLimit: Number.isFinite(Number(value?.historyLimit))
+        ? Math.min(100, Math.max(5, Math.round(Number(value?.historyLimit))))
+        : 20,
     };
   }
 
@@ -214,13 +286,35 @@ export default class AnalogCanvasPlugin
     return this.assetStore.list();
   }
 
+  async listVersions(path: string): Promise<AcVersion[]> {
+    return this.assetStore.versions(path);
+  }
+
   async saveProject(params: {
     asset: string | null;
     text: string;
     name: string;
     saveAs: boolean;
+    autosave?: boolean;
   }): Promise<{ status: "saved"; file: SavedFile } | { status: "cancelled" }> {
     const title = sanitizeTitle(params.name.replace(/\.icproj\.json$/iu, ""));
+    if (!params.saveAs && params.asset) {
+      const existing = await this.resolveAsset(params.asset);
+      if (existing) {
+        try {
+          const previous = await this.assetStore.read(existing.path);
+          if (previous !== params.text) {
+            await this.assetStore.snapshot(existing.path, previous, {
+              // Autosave must not fill the history with near-identical copies.
+              minInterval: params.autosave ? 5 * 60 * 1000 : 0,
+              limit: this.settings.historyLimit,
+            });
+          }
+        } catch (error) {
+          console.warn("[siyuan-analog-canvas] history snapshot failed", error);
+        }
+      }
+    }
     const asset =
       !params.asset || params.saveAs
         ? await this.assetStore.create(title, params.text)
@@ -260,8 +354,26 @@ export default class AnalogCanvasPlugin
     name: string;
     mediaType: string;
     bytes: Uint8Array;
-    intent: "insert" | "export";
+    intent: "insert" | "export" | "clipboard";
   }): Promise<{ status: "saved"; path: string } | { status: "cancelled" }> {
+    if (params.intent === "clipboard") {
+      const ext = imageExtension(params.mediaType, params.name);
+      const copied =
+        ext === "svg"
+          ? await copySvgToClipboard(new TextDecoder().decode(params.bytes))
+          : ext === "png"
+            ? await copyPngToClipboard(params.bytes)
+            : false;
+      if (copied) {
+        this.notify(
+          ext === "svg" ? this.i18n.copiedSvg ?? "SVG copied" : this.i18n.copiedPng ?? "PNG copied",
+          "info",
+        );
+        return { status: "saved", path: "" };
+      }
+      this.notify(this.i18n.copyFailed ?? "Could not copy the drawing", "error");
+      return { status: "cancelled" };
+    }
     if (params.intent === "insert") {
       const ext = imageExtension(params.mediaType, params.name);
       const source = params.asset ? await this.resolveAsset(params.asset) : null;
@@ -284,6 +396,7 @@ export default class AnalogCanvasPlugin
       }
       const imagePath = matching?.imagePath ?? imagePathFor(source.path, ext);
       await this.assetStore.saveBinaryAt(imagePath, params.bytes, params.mediaType);
+      refreshPreviews(source.path);
       if (pending) {
         await insertImageAfterBlock(pending.blockId, source, imagePath);
         this.pendingInserts.delete(source.path);
@@ -318,6 +431,18 @@ export default class AnalogCanvasPlugin
     this.editorManager.open(asset);
   }
 
+  openOnlineGallery(): void {
+    this.galleryManager.open();
+  }
+
+  async importProjectFile(): Promise<AcAsset | null> {
+    return importProjectFromFile(this);
+  }
+
+  async readClipboardText(): Promise<string> {
+    return readSystemClipboard();
+  }
+
   updateTabTitle(asset: string, title: string): void {
     this.editorManager.updateTitle(asset, title);
   }
@@ -343,7 +468,175 @@ export default class AnalogCanvasPlugin
     if (action === "delete" || action === "purge") {
       const asset = await this.resolveAsset(id);
       if (asset) await this.deleteAsset(asset);
+      return;
     }
+    if (action === "restore-version") {
+      const version = String(params.version ?? "");
+      const asset = await this.resolveAsset(id);
+      if (!asset || !version) throw new Error(this.i18n.assetMissing);
+      await this.restoreVersion(asset, version);
+      return;
+    }
+    if (action === "branch-version") {
+      const version = String(params.version ?? "");
+      const asset = await this.resolveAsset(id);
+      if (!asset || !version) throw new Error(this.i18n.assetMissing);
+      await this.branchVersion(asset, version);
+      return;
+    }
+    if (action === "duplicate") {
+      await this.duplicateAsset(id);
+      return;
+    }
+    if (action === "favorite" || action === "restore") return;
+    throw new Error(`Unsupported library action: ${action}`);
+  }
+
+  setEditorDirty(asset: string, dirty: boolean): void {
+    if (!asset) return;
+    if (dirty) {
+      this.dirtyAssets.add(asset);
+      return;
+    }
+    this.dirtyAssets.delete(asset);
+    const waiters = this.dirtyWaiters.get(asset);
+    if (waiters) {
+      this.dirtyWaiters.delete(asset);
+      waiters.forEach((waiter) => waiter(false));
+    }
+  }
+
+  private handleBeforeUnload = (event: BeforeUnloadEvent): void => {
+    this.pruneDirty();
+    if (this.dirtyAssets.size === 0) return;
+    event.preventDefault();
+    event.returnValue = "";
+  };
+
+  private pruneDirty(): void {
+    for (const asset of [...this.dirtyAssets]) {
+      if (!this.editorManager.isOpen(asset)) this.dirtyAssets.delete(asset);
+    }
+  }
+
+  private handleTabClose = (event: MouseEvent): void => {
+    const target = event.target as HTMLElement | null;
+    const close = target?.closest?.(".item__close") as HTMLElement | null;
+    if (!close) return;
+    const tab = close.closest(
+      ".layout-tab-bar .item, .layout-tab .item",
+    ) as HTMLElement | null;
+    if (!tab || tab.classList.contains("item--pin")) return;
+    const tabId = tab.getAttribute("data-id") ?? "";
+    if (this.allowCloseTab && this.allowCloseTab === tabId) {
+      this.allowCloseTab = "";
+      return;
+    }
+    const record = this.editorManager.recordForTab(tabId);
+    if (!record || !this.dirtyAssets.has(record.asset)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    void this.confirmDirtyClose(record, () => close.click());
+  };
+
+  private handleTabCloseKey = (event: KeyboardEvent): void => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+    if (event.key.toLowerCase() !== "w") return;
+    const active = document.querySelector(
+      ".layout__wnd--active .layout-tab-bar .item--focus, .layout-tab-bar .item--focus",
+    ) as HTMLElement | null;
+    const tabId = active?.getAttribute("data-id") ?? "";
+    const record = this.editorManager.recordForTab(tabId);
+    if (!record) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    this.requestEditorClose(record.asset);
+  };
+
+  requestEditorClose(asset: string): void {
+    const record = this.editorManager.recordForAsset(asset);
+    if (!record) return;
+    const performClose = record.dialog
+      ? () => record.dialog?.destroy()
+      : () => this.closeButtonForTab(record.tabId)?.click();
+    if (this.dirtyAssets.has(record.asset)) {
+      void this.confirmDirtyClose(record, performClose);
+    } else {
+      performClose();
+    }
+  }
+
+  private closeButtonForTab(tabId: string): HTMLElement | null {
+    if (!tabId) return null;
+    const tab = document.querySelector(
+      `.layout-tab-bar .item[data-id="${CSS.escape(tabId)}"], .layout-tab .item[data-id="${CSS.escape(tabId)}"]`,
+    );
+    return (tab?.querySelector(".item__close") as HTMLElement | null) ?? null;
+  }
+
+  private async confirmDirtyClose(
+    record: EditorRecord,
+    performClose: () => void,
+  ): Promise<void> {
+    const choice = await closeGuardDialog({
+      title: this.i18n.unsavedTitle ?? "Unsaved changes",
+      message: (this.i18n.unsavedMessage ?? "Save changes before closing?").replace(
+        "{name}",
+        titleFromFileName(record.asset.slice(record.asset.lastIndexOf("/") + 1)),
+      ),
+      saveText: this.i18n.saveAndClose ?? "Save and close",
+      discardText: this.i18n.closeWithoutSaving ?? "Close without saving",
+      cancelText: this.i18n.cancel,
+      isMobile: this.isMobile,
+    });
+    if (choice === "cancel") return;
+    if (choice === "save") {
+      const saved = await this.saveEditor(record);
+      if (!saved) {
+        this.notify(this.i18n.saveFailed ?? "Could not save the circuit", "error");
+        return;
+      }
+    } else {
+      this.dirtyAssets.delete(record.asset);
+    }
+    this.allowCloseTab = record.tabId;
+    performClose();
+  }
+
+  private saveEditor(record: EditorRecord): Promise<boolean> {
+    if (!this.dirtyAssets.has(record.asset)) return Promise.resolve(true);
+    if (!record.iframe.isConnected) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        const waiters = this.dirtyWaiters.get(record.asset) ?? [];
+        this.dirtyWaiters.set(
+          record.asset,
+          waiters.filter((waiter) => waiter !== onSaved),
+        );
+        resolve(value);
+      };
+      const onSaved = (dirty: boolean) => {
+        if (!dirty) finish(true);
+      };
+      const timer = window.setTimeout(() => finish(false), 20000);
+      const waiters = this.dirtyWaiters.get(record.asset) ?? [];
+      waiters.push(onSaved);
+      this.dirtyWaiters.set(record.asset, waiters);
+      try {
+        record.iframe.contentWindow?.postMessage(
+          { __ac: 1, type: "event", event: "save" },
+          window.location.origin,
+        );
+      } catch {
+        finish(false);
+      }
+    });
   }
 
   async duplicateAsset(path: string): Promise<AcAsset> {
@@ -351,6 +644,32 @@ export default class AnalogCanvasPlugin
     this.refreshDock();
     this.notify(this.i18n.saved, "info");
     return asset;
+  }
+
+  async restoreVersion(asset: AcAsset, version: string): Promise<void> {
+    if (this.editorManager.isOpen(asset.path)) {
+      throw new Error(
+        this.i18n.closeEditorForRestore ?? "Close the editor before restoring a version.",
+      );
+    }
+    await this.assetStore.restoreVersion(asset.path, version, this.settings.historyLimit);
+    this.refreshDock();
+    refreshPreviews(asset.path);
+    this.notify(this.i18n.historyRestored ?? "Version restored", "info");
+  }
+
+  async branchVersion(asset: AcAsset, version: string): Promise<AcAsset> {
+    const branched = await this.assetStore.branchVersion(
+      asset.path,
+      version,
+      `${asset.title} (${this.i18n.historyVersion ?? "version"})`,
+    );
+    this.refreshDock();
+    this.notify(
+      (this.i18n.versionBranched ?? "Created {name}").replace("{name}", branched.title),
+      "info",
+    );
+    return branched;
   }
 
   async insertAsset(asset: AcAsset, protyle?: Protyle, targetBlockId?: string): Promise<void> {
@@ -364,7 +683,8 @@ export default class AnalogCanvasPlugin
       } catch {
         // The editor may have been closed while the picker was open.
       }
-      insertPreview(protyle, asset, this.settings.previewHeight);
+      const image = await this.assetStore.imageFor(asset);
+      insertPreview(protyle, asset, this.settings.previewHeight, image?.path);
       return;
     }
     const existing = await this.assetStore.imageFor(asset);
@@ -409,6 +729,7 @@ export default class AnalogCanvasPlugin
       // Keep the original text if it is not valid JSON.
     }
     const renamed = await this.assetStore.saveAs(title, body);
+    await this.assetStore.moveHistory(asset.path, renamed.path).catch(() => undefined);
     await this.assetStore.remove(asset.path);
     await updateSourceReferences(asset.path, renamed.path, title);
     const pending = this.pendingInserts.get(asset.path);
@@ -460,7 +781,52 @@ export default class AnalogCanvasPlugin
         });
       },
     });
+    window.siyuan.menus?.menu.addItem({
+      id: "analog-canvas-history-image",
+      icon: "iconClock",
+      label: this.i18n.history,
+      click: () => {
+        void this.resolveAsset(source).then((asset) => {
+          if (asset) void openHistoryDialog(this, asset);
+        });
+      },
+    });
+    window.siyuan.menus?.menu.addSeparator?.();
+    window.siyuan.menus?.menu.addItem({
+      id: "analog-canvas-copy-png",
+      icon: "iconCopy",
+      label: this.i18n.copyPng ?? "Copy PNG",
+      click: () => void this.copyCircuit(source, "png"),
+    });
+    window.siyuan.menus?.menu.addItem({
+      id: "analog-canvas-copy-svg",
+      icon: "iconCopy",
+      label: this.i18n.copySvg ?? "Copy SVG",
+      click: () => void this.copyCircuit(source, "svg"),
+    });
   };
+
+  private async copyCircuit(source: string, format: ImageFormat): Promise<void> {
+    const imagePath = imagePathFor(source, format);
+    try {
+      const copied =
+        format === "svg"
+          ? await copySvgToClipboard(await this.assetStore.read(imagePath))
+          : await copyPngToClipboard(await this.assetStore.readBinary(imagePath));
+      if (copied) {
+        this.notify(
+          format === "svg"
+            ? this.i18n.copiedSvg ?? "SVG copied"
+            : this.i18n.copiedPng ?? "PNG copied",
+          "info",
+        );
+      } else {
+        this.notify(this.i18n.copyFailed ?? "Could not copy the drawing", "error");
+      }
+    } catch {
+      this.notify(this.i18n.copyFailed ?? "Could not copy the drawing", "error");
+    }
+  }
 
   async deleteAsset(asset: AcAsset): Promise<void> {
     const references = await this.countReferences(asset.path).catch(() => 0);

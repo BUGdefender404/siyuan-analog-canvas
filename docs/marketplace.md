@@ -43,7 +43,7 @@ reads the **Latest GitHub Release** of the listed repository and expects a
   `preview.png`, `README.md` and the declared `README_zh_CN.md`.
 - `icon.png` must be PNG/JPEG/WebP/AVIF and ≤ 64 KiB; `preview.png` ≤ 512 KiB.
 - The zip must not contain a wrapper directory, backslash paths or symlinks.
-- The bundle includes `editor/` (≈19 MB); do not exclude it — it is the
-  offline editor.
+- The bundle includes `editor/` (≈8 MB); do not exclude it — it is the
+  offline editor. The package is about 3 MB.
 - The source of the AGPL editor is the public upstream commit recorded in
   `THIRD_PARTY_NOTICES.md`; keep the build script and shim in this repository.

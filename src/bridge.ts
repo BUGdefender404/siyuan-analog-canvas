@@ -1,14 +1,16 @@
 import { PLUGIN_NAME } from "./constants";
-import type { AcAsset, BridgeEvent, SavedFile } from "./types";
+import type { AcAsset, AcVersion, BridgeEvent, SavedFile } from "./types";
 
 export interface BridgeHost {
   readAsset(path: string): Promise<string>;
   listAssets(): Promise<AcAsset[]>;
+  listVersions(path: string): Promise<AcVersion[]>;
   saveProject(params: {
     asset: string | null;
     text: string;
     name: string;
     saveAs: boolean;
+    autosave?: boolean;
   }): Promise<{ status: "saved"; file: SavedFile } | { status: "cancelled" }>;
   pickAssetForEditor(): Promise<AcAsset | null>;
   pickSaveName(suggestedName: string): Promise<string | null>;
@@ -17,10 +19,14 @@ export interface BridgeHost {
     name: string;
     mediaType: string;
     bytes: Uint8Array;
-    intent: "insert" | "export";
+    intent: "insert" | "export" | "clipboard";
   }): Promise<{ status: "saved"; path: string } | { status: "cancelled" }>;
+  readClipboardText(): Promise<string>;
+  openOnlineGallery(): void;
   openEditor(asset: AcAsset): void;
   updateTabTitle(asset: string, title: string): void;
+  setEditorDirty(asset: string, dirty: boolean): void;
+  requestEditorClose(asset: string): void;
   notify(message: string, type?: "info" | "error"): void;
   libraryAction(params: Record<string, unknown>): Promise<void>;
   duplicateAsset(path: string): Promise<AcAsset>;
@@ -49,6 +55,34 @@ function isEvent(value: unknown): value is BridgeEvent {
   if (!value || typeof value !== "object") return false;
   const message = value as Partial<BridgeEvent>;
   return message.__ac === 1 && message.type === "event" && typeof message.event === "string";
+}
+
+const MAX_CIRCUIT_CLIPBOARD = 16 * 1024 * 1024;
+
+/** The editor's own cross-window copy format; never accept arbitrary JSON. */
+export function circuitClipboardText(text: string): string | null {
+  if (!text || text.length > MAX_CIRCUIT_CLIPBOARD) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const envelope = value as {
+    format?: unknown;
+    version?: unknown;
+    project?: unknown;
+  };
+  if (
+    envelope.format !== "analog-canvas/clipboard" ||
+    envelope.version !== 1 ||
+    !envelope.project ||
+    typeof envelope.project !== "object"
+  ) {
+    return null;
+  }
+  return text;
 }
 
 function base64ToBytes(value: string): Uint8Array {
@@ -133,6 +167,7 @@ export class AcBridge {
           text: String(params.text ?? ""),
           name: String(params.name ?? "untitled.icproj.json"),
           saveAs: Boolean(params.saveAs),
+          autosave: params.autosave === true,
         });
       }
       case "pickAsset": {
@@ -154,13 +189,23 @@ export class AcBridge {
         const name = await this.host.pickSaveName(String(params.suggestedName ?? "Untitled"));
         return name ? { name } : { status: "cancelled" };
       }
+      case "readCircuitClipboard": {
+        const text = await this.host.readClipboardText();
+        const payload = circuitClipboardText(text);
+        return payload ? { status: "ok", text: payload } : { status: "empty" };
+      }
       case "saveExport": {
         return this.host.saveExport({
           asset: typeof params.asset === "string" ? params.asset : null,
           name: String(params.name ?? "export.bin"),
           mediaType: String(params.mediaType ?? "application/octet-stream"),
           bytes: base64ToBytes(String(params.base64 ?? "")),
-          intent: params.intent === "insert" ? "insert" : "export",
+          intent:
+            params.intent === "insert"
+              ? "insert"
+              : params.intent === "clipboard"
+                ? "clipboard"
+                : "export",
         });
       }
       case "libraryList": {
@@ -190,8 +235,9 @@ export class AcBridge {
       }
       case "history": {
         const id = String(params.id ?? "");
-        const text = await this.host.readAsset(id);
-        return { status: "listed", currentText: text, versions: [] };
+        const currentText = await this.host.readAsset(id);
+        const versions = await this.host.listVersions(id);
+        return { status: "listed", currentText, versions };
       }
       case "savedCopy": {
         const id = String(params.id ?? "");
@@ -242,6 +288,20 @@ export class AcBridge {
       const path = String(payload.asset ?? "");
       const title = String(payload.title ?? "").trim();
       if (path && title) this.host.updateTabTitle(path, title);
+      return;
+    }
+    if (message.event === "dirty") {
+      const path = String(payload.asset ?? "");
+      if (path) this.host.setEditorDirty(path, payload.dirty === true);
+      return;
+    }
+    if (message.event === "request-close") {
+      const path = String(payload.asset ?? "");
+      if (path) this.host.requestEditorClose(path);
+      return;
+    }
+    if (message.event === "open-gallery") {
+      this.host.openOnlineGallery();
       return;
     }
     if (message.event === "preview-height") {

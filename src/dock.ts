@@ -1,7 +1,9 @@
 import { Menu } from "siyuan";
+import { GALLERY_ICON_ID } from "./constants";
 import { promptText } from "./dialog";
-import { sanitizeTitle } from "./assets";
 import { t, type PluginHost } from "./host";
+import { openHistoryDialog } from "./history";
+import { newFromTemplate, pickTemplate } from "./templates";
 import type { AcAsset } from "./types";
 
 function escapeHtml(value: string): string {
@@ -53,6 +55,10 @@ export class AssetDock {
       }
       if (target.closest(".ac-dock__refresh")) {
         void this.refresh();
+        return;
+      }
+      if (target.closest(".ac-dock__gallery")) {
+        this.host.openOnlineGallery();
         return;
       }
       const item = target.closest(".ac-dock__item") as HTMLElement | null;
@@ -116,6 +122,11 @@ export class AssetDock {
       },
     });
     menu.addItem({
+      icon: "iconClock",
+      label: t(this.host, "history"),
+      click: () => void openHistoryDialog(this.host, asset),
+    });
+    menu.addItem({
       icon: "iconLink",
       label: t(this.host, "copyLink"),
       click: () => void this.host.copyLink(asset),
@@ -130,23 +141,12 @@ export class AssetDock {
   }
 
   private async create(): Promise<void> {
-    const title = await promptText({
-      title: t(this.host, "newCircuit"),
-      label: t(this.host, "namePlaceholder"),
-      value: t(this.host, "newProject"),
-      confirmText: t(this.host, "create"),
-      cancelText: t(this.host, "cancel"),
-      isMobile: this.host.isMobile,
-      validate: (value) => (value.trim() ? null : t(this.host, "nameRequired")),
-    });
-    if (!title) return;
-    try {
-      const asset = await this.host.assetStore.create(sanitizeTitle(title));
-      await this.refresh();
-      this.host.openAsset(asset);
-    } catch (error) {
-      this.host.notify(error instanceof Error ? error.message : String(error), "error");
-    }
+    const template = await pickTemplate(this.host);
+    if (!template) return;
+    const asset = await newFromTemplate(this.host, template);
+    if (!asset) return;
+    await this.refresh();
+    this.host.openAsset(asset);
   }
 
   private visible(): AcAsset[] {
@@ -183,6 +183,9 @@ export class AssetDock {
     this.element.innerHTML = `<div class="ac-dock__header">
   <span class="ac-dock__title">${escapeHtml(t(this.host, "dockTitle"))}</span>
   <span class="ac-dock__actions">
+    <button type="button" class="b3-tooltips ac-dock__gallery" aria-label="${escapeHtml(
+      t(this.host, "onlineGallery"),
+    )}" title="${escapeHtml(t(this.host, "onlineGallery"))}"><svg><use xlink:href="#${GALLERY_ICON_ID}"></use></svg></button>
     <button type="button" class="b3-tooltips ac-dock__refresh" aria-label="${escapeHtml(
       t(this.host, "refresh"),
     )}"><svg><use xlink:href="#iconRefresh"></use></svg></button>

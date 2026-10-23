@@ -12,7 +12,11 @@ export interface PluginHost {
   deleteAsset(asset: AcAsset): Promise<void>;
   renameAsset(asset: AcAsset, newTitle: string): Promise<void>;
   duplicateAsset(path: string): Promise<AcAsset>;
+  restoreVersion(asset: AcAsset, version: string): Promise<void>;
+  branchVersion(asset: AcAsset, version: string): Promise<AcAsset>;
   copyLink(asset: AcAsset): Promise<void>;
+  importProjectFile(): Promise<AcAsset | null>;
+  openOnlineGallery(): void;
   notify(message: string, type?: "info" | "error"): void;
   refreshDock(): void;
 }

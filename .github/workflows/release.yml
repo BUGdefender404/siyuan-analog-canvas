@@ -35,12 +35,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: _upstream
-          key: analog-canvas-729cfb1ed7e01f3ba5e56bd1aca41ae03731aab4-v1
+          key: analog-canvas-729cfb1ed7e01f3ba5e56bd1aca41ae03731aab4-v2
 
       - name: Install plugin dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build plugin, editor and SVG preview
+      - name: Build plugin and slim editor
         run: pnpm build
         env:
           COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"

@@ -1,0 +1,50 @@
+{
+  "templates": [
+    {
+      "id": "blank",
+      "file": "blank.icproj.json",
+      "blank": true,
+      "name": { "zh": "空白电路", "en": "Blank circuit" },
+      "description": {
+        "zh": "从一张空白画布开始绘制自己的电路。",
+        "en": "Start with an empty sheet and draw your own circuit."
+      }
+    },
+    {
+      "id": "common-source",
+      "file": "common-source-amplifier.icproj.json",
+      "name": { "zh": "共源放大器", "en": "Common-source amplifier" },
+      "description": {
+        "zh": "单管共源增益级，适合快速修改偏置与负载。",
+        "en": "A single-transistor gain stage for quick bias and load experiments."
+      }
+    },
+    {
+      "id": "differential-pair",
+      "file": "current-mirror-loaded-differential-pair.icproj.json",
+      "name": { "zh": "电流镜负载差分对", "en": "Current-mirror differential pair" },
+      "description": {
+        "zh": "带电流镜负载的差分输入级，两级运放的第一级。",
+        "en": "A differential input stage with a current-mirror load."
+      }
+    },
+    {
+      "id": "two-stage-opamp",
+      "file": "two-stage-op-amp.icproj.json",
+      "name": { "zh": "两级运放", "en": "Two-stage op-amp" },
+      "description": {
+        "zh": "经典米勒补偿两级 CMOS 运放。",
+        "en": "The classic Miller-compensated two-stage CMOS op-amp."
+      }
+    },
+    {
+      "id": "five-transistor-ota",
+      "file": "five-transistor-ota.icproj.json",
+      "name": { "zh": "五管 OTA（Sky130）", "en": "Five-transistor OTA (Sky130)" },
+      "description": {
+        "zh": "完整的五管 OTA 示例，包含仿真与模型设置。",
+        "en": "A complete five-transistor OTA example with simulation setup."
+      }
+    }
+  ]
+}

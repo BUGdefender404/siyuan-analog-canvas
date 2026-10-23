@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.2.0 — 2026-10-24
+
+- **Common circuit templates**: blank, common-source amplifier, current-mirror
+  differential pair, two-stage op-amp and five-transistor OTA (Sky130) are
+  available from **New** in the picker and dock.
+- **Autosave every 15 seconds** while the editor is open (configurable in
+  Settings); manual saves still work as before.
+- **Version snapshots**: the previous file is kept in
+  `assets/analog-canvas/.history` before each save (20 by default), with a
+  **Version history** action in the image, picker and dock menus to restore or
+  branch a version.
+- **Close protection**: closing a dirty editor tab, pressing Ctrl/Cmd+W, or
+  quitting SiYuan asks whether to save, discard or cancel.
+- **High-quality PNG**: configurable 1×–6× export scale (default 3×) for note
+  images and exports.
+- **Copy to clipboard**: copy PNG or SVG from the note image menu or the
+  editor's floating action bar.
+- **Online Gallery tab**: browse the hosted Analog Canvas Gallery from a
+  SiYuan tab (top bar, picker, dock and editor floating bar), with quick links
+  to the Gallery and online editor, refresh, browser fallback and project
+  import.
+- **Insert a circuit from the clipboard**: copy a whole circuit or a selection
+  in the online Gallery, then use **Insert circuit** (or
+  `Ctrl/Cmd+Shift+V`) in the local editor to place it on the current drawing.
+  The payload is validated as an Analog Canvas circuit envelope first.
+- **Import `.icproj.json`**: load a project exported from the online editor
+  into `assets/analog-canvas` from the picker or the Gallery tab.
+- **Slimmer bundle**: the static image preview replaces the bundled SVG
+  renderer, PDF export and the RNL WebAssembly runtime are removed, and module
+  preloading is disabled. The editor is about 8 MB (was 20 MB); the packaged
+  plugin is about 3 MB (was 8 MB).
+- Native save-dialog RPC timeout extended from 2 minutes to 15 minutes.
+
 ## 0.1.0 — 2026-10-23
 
 Initial release.

@@ -88,6 +88,133 @@ async function replaceInJs(dir, search, replacement) {
   }
 }
 
+async function patchOrFail(path, replace) {
+  const text = await readFile(path, "utf8");
+  const next = replace(text);
+  if (next === text) {
+    throw new Error(`Build patch did not match ${path}`);
+  }
+  await writeFile(path, next);
+}
+
+/**
+ * The SiYuan package keeps the drawing and image-export surface and drops
+ * features that only make sense in the full desktop app: PDF export (jsPDF +
+ * embedded fonts), the RNL runtime (a 2.3 MB WebAssembly worker), and eager
+ * module preloading. The source stays at the pinned upstream commit; only
+ * these build-time seams are changed.
+ */
+async function patchUpstream() {
+  const exportPath = join(
+    UPSTREAM,
+    "apps/editor/src/features/editor-shell/editor-export-commands.ts",
+  );
+  await patchOrFail(exportPath, (text) => {
+    let next = text;
+    if (!next.includes("__acExportScale")) {
+      const target = "    const png = await rasterizeFormalSvgInBrowser(source);";
+      if (!next.includes(target)) {
+        throw new Error("PNG export patch target not found");
+      }
+      next = next.replace(
+        target,
+        `    const requestedScale = Number(
+      (globalThis as { __acExportScale?: number }).__acExportScale,
+    );
+    const png = await rasterizeFormalSvgInBrowser(
+      source,
+      Number.isFinite(requestedScale) && requestedScale >= 1 && requestedScale <= 8
+        ? requestedScale
+        : 3,
+    );`,
+      );
+    }
+    if (next.includes("vectorizeFormalSvgInBrowser")) {
+      const before = next;
+      next = next.replace(
+        /  const \{ vectorizeFormalSvgInBrowser \} = await importChunk\([\s\S]*?report: `Exported PDF revision \$\{document\.revision\}`,\n  \};\n/u,
+        '  throw new Error("PDF export is not included in this build; use PNG or SVG.");\n',
+      );
+      if (next === before) {
+        throw new Error("PDF export patch target not found");
+      }
+    }
+    return next;
+  });
+
+  const menuPath = join(
+    UPSTREAM,
+    "apps/editor/src/features/editor-shell/file-command-menu.tsx",
+  );
+  const menuText = await readFile(menuPath, "utf8");
+  if (
+    menuText.includes('aria-label="Export PDF"') ||
+    menuText.includes("{onImportRnl ? (")
+  ) {
+    await patchOrFail(menuPath, (text) =>
+      text
+        .replace(
+          /\s*<button\s+type="button"\s+aria-label="Export PDF"[\s\S]*?<\/button>/u,
+          "",
+        )
+        .replace(/\s*\{onImportRnl \? \([\s\S]*?\) : null\}/u, ""),
+    );
+  }
+
+  const modePath = join(
+    UPSTREAM,
+    "apps/editor/src/features/netlist-export/netlist-mode.ts",
+  );
+  const modeText = await readFile(modePath, "utf8");
+  if (modeText.includes('"spice+rnl"')) {
+    await patchOrFail(modePath, (text) =>
+      text.replace(
+        /export const netlistModeOptions = \[[\s\S]*?\] as const satisfies readonly \{ value: NetlistMode; label: string \}\[\];/u,
+        `export const netlistModeOptions = [
+  { value: "spice", label: "SPICE" },
+  { value: "spectre", label: "SCS" },
+] as const satisfies readonly { value: NetlistMode; label: string }[];`,
+      ),
+    );
+  }
+
+  const agentPath = join(
+    UPSTREAM,
+    "apps/editor/src/agent/browser-agent-file-host.ts",
+  );
+  const agentText = await readFile(agentPath, "utf8");
+  if (agentText.includes("vectorizeFormalSvgInBrowser")) {
+    await patchOrFail(agentPath, (text) =>
+      text.replace(
+        /      const \{ vectorizeFormalSvgInBrowser \} = await importChunk\([\s\S]*?"application\/pdf",\n        pdf,\n      \);\n/u,
+        '      throw new Error("PDF export is not included in this build");\n',
+      ),
+    );
+  }
+
+  const rnlPath = join(
+    UPSTREAM,
+    "apps/editor/src/features/netlist-export/rnl-runtime.ts",
+  );
+  const rnlMarker = "export function loadRnlRuntime(): Promise<RnlRuntime | null> {";
+  await patchOrFail(rnlPath, (text) => {
+    const index = text.indexOf(rnlMarker);
+    if (index < 0) throw new Error("RNL runtime patch target not found");
+    return `${text.slice(0, index)}${rnlMarker}\n  return Promise.resolve(null);\n}\n`;
+  });
+
+  const vitePath = join(UPSTREAM, "apps/editor/vite.desktop.config.ts");
+  const viteText = await readFile(vitePath, "utf8");
+  if (!viteText.includes("modulePreload: false")) {
+    await patchOrFail(vitePath, (text) =>
+      text.replace(
+        'build: { outDir: "dist-desktop" },',
+        'build: { outDir: "dist-desktop", modulePreload: false },',
+      ),
+    );
+  }
+}
+
 async function injectHost(editorDir) {
   const shim = await readFile(join(ROOT, "overlay/host/siyuan-host.js"));
   await writeFile(join(editorDir, "siyuan-host.js"), shim);
@@ -128,7 +255,7 @@ async function injectHost(editorDir) {
   if (license) await writeFile(join(editorDir, "LICENSE.md"), license);
   await writeFile(
     join(editorDir, "SOURCE.txt"),
-    `Analog Canvas editor bundle\nUpstream: ${REPO}\nCommit: ${PIN}\nLicense: AGPL-3.0-only\nBuilt by: siyuan-analog-canvas/scripts/build-editor.mjs\n`,
+    `Analog Canvas editor bundle\nUpstream: ${REPO}\nCommit: ${PIN}\nLicense: AGPL-3.0-only\nPatches: siyuan-analog-canvas/scripts/build-editor.mjs\nBuilt by: siyuan-analog-canvas/scripts/build-editor.mjs\n`,
   );
 }
 
@@ -145,22 +272,15 @@ async function main() {
     console.log(`Using external upstream checkout: ${UPSTREAM}`);
   } else {
     await ensureUpstream();
-    await git(["checkout", "--detach", PIN], UPSTREAM);
+    const reset = await git(["reset", "--hard", PIN], UPSTREAM);
+    if (reset.status !== 0) {
+      throw new Error(`Could not reset the pinned upstream: ${(reset.stderr || "").trim()}`);
+    }
   }
+  await patchUpstream();
   if (process.env.AC_REUSE_UPSTREAM_BUILD !== "1") {
     await run("corepack", ["pnpm", "install", "--frozen-lockfile"], UPSTREAM);
   }
-
-  await mkdir(join(UPSTREAM, "apps/editor/src/entries"), { recursive: true });
-  await cp(join(ROOT, "overlay/editor/siyuan-preview.html"), join(UPSTREAM, "apps/editor/siyuan-preview.html"));
-  await cp(
-    join(ROOT, "overlay/editor/src/entries/siyuan-preview.ts"),
-    join(UPSTREAM, "apps/editor/src/entries/siyuan-preview.ts"),
-  );
-  await cp(
-    join(ROOT, "overlay/editor/vite.siyuan-preview.config.ts"),
-    join(UPSTREAM, "apps/editor/vite.siyuan-preview.config.ts"),
-  );
 
   if (process.env.AC_REUSE_UPSTREAM_BUILD !== "1") {
     console.log("\nBuilding upstream workspace packages and apps…");
@@ -175,16 +295,12 @@ async function main() {
     join(UPSTREAM, "apps/editor"),
   );
 
-  console.log("\nBuilding the lightweight SVG preview…");
-  await rm(join(UPSTREAM, "apps/editor/dist-siyuan-preview"), { recursive: true, force: true });
-  await run(
-    "corepack",
-    ["pnpm", "exec", "vite", "build", "--config", "vite.siyuan-preview.config.ts"],
-    join(UPSTREAM, "apps/editor"),
-  );
-
   const built = join(UPSTREAM, "apps/editor/dist-desktop");
-  await copyTree(join(UPSTREAM, "apps/editor/dist-siyuan-preview"), join(built, "preview"));
+  await mkdir(join(built, "preview"), { recursive: true });
+  await cp(
+    join(ROOT, "overlay/editor/siyuan-preview.html"),
+    join(built, "preview/siyuan-preview.html"),
+  );
 
   const target = join(ROOT, "dist/editor");
   await mkdir(join(ROOT, "dist"), { recursive: true });

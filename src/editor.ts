@@ -1,11 +1,12 @@
 import { Dialog, openTab } from "siyuan";
 import { EDITOR_PATH, ICON_ID, PLUGIN_NAME, TAB_TYPE } from "./constants";
-import type { AcAsset } from "./types";
+import type { AcAsset, AcSettings } from "./types";
 
 export interface EditorHost {
   app: unknown;
   isMobile: boolean;
   i18n: Record<string, string>;
+  settings: AcSettings;
   updateEditorTabTitle(tabId: string, title: string): void;
 }
 
@@ -21,7 +22,7 @@ interface EditorData {
   editorOptions?: EditorOptions;
 }
 
-interface EditorRecord {
+export interface EditorRecord {
   asset: string;
   element: HTMLElement;
   iframe: HTMLIFrameElement;
@@ -48,7 +49,11 @@ function currentLang(): "zh" | "en" {
   }
 }
 
-function editorUrl(asset: string, options: EditorOptions = {}): string {
+function editorUrl(
+  asset: string,
+  options: EditorOptions = {},
+  settings?: AcSettings,
+): string {
   const params = new URLSearchParams({
     asset,
     theme: currentTheme(),
@@ -58,6 +63,10 @@ function editorUrl(asset: string, options: EditorOptions = {}): string {
   if (options.insert) params.set("insert", "1");
   if (options.update) params.set("update", "1");
   if (options.format) params.set("format", options.format);
+  if (settings) {
+    params.set("scale", String(settings.exportScale));
+    params.set("autosave", settings.autosave ? "1" : "0");
+  }
   return `${EDITOR_PATH}?${params.toString()}`;
 }
 
@@ -70,12 +79,23 @@ export class EditorManager {
   }
 
   isOpen(asset: string): boolean {
-    this.records = this.records.filter((record) => record.dialog || record.iframe.isConnected);
+    this.live();
     return this.records.some((record) => record.asset === asset);
   }
 
+  recordForTab(tabId: string): EditorRecord | null {
+    if (!tabId) return null;
+    this.live();
+    return this.records.find((record) => record.tabId === tabId) ?? null;
+  }
+
+  recordForAsset(asset: string): EditorRecord | null {
+    this.live();
+    return this.records.find((record) => record.asset === asset) ?? null;
+  }
+
   open(asset: AcAsset, options: EditorOptions = {}): void {
-    this.records = this.records.filter((record) => record.dialog || record.iframe.isConnected);
+    this.live();
     const existing = this.records.find(
       (record) => record.asset === asset.path && (record.dialog || record.iframe.isConnected),
     );
@@ -98,7 +118,16 @@ export class EditorManager {
         title: asset.title,
         data,
       },
-    });
+    })
+      .then((tab) => {
+        const record = this.records.find(
+          (item) => item.asset === asset.path && item.iframe.isConnected,
+        );
+        if (record && tab?.id) record.tabId = tab.id;
+      })
+      .catch((error) => {
+        console.warn("[siyuan-analog-canvas] could not open the editor tab", error);
+      });
   }
 
   private openDialog(asset: AcAsset, options: EditorOptions): void {
@@ -148,7 +177,7 @@ export class EditorManager {
     iframe.setAttribute("allow", "clipboard-read; clipboard-write");
     iframe.setAttribute("data-ac-asset", asset);
     iframe.title = asset;
-    iframe.src = editorUrl(asset, data.editorOptions);
+    iframe.src = editorUrl(asset, data.editorOptions, this.host.settings);
     shell.append(iframe, loading);
     element.appendChild(shell);
     if (dialog) element.classList.add("ac-editor-dialog__content--active");
@@ -178,11 +207,15 @@ export class EditorManager {
   }
 
   updateTitle(asset: string, title: string): void {
-    this.records = this.records.filter((record) => record.dialog || record.iframe.isConnected);
+    this.live();
     for (const record of this.records) {
       if (record.asset !== asset || !record.tabId) continue;
       this.host.updateEditorTabTitle(record.tabId, title);
     }
+  }
+
+  private live(): void {
+    this.records = this.records.filter((record) => record.dialog || record.iframe.isConnected);
   }
 
   private focus(record: EditorRecord): boolean {

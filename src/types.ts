@@ -17,6 +17,26 @@ export interface AcSettings {
   imageFormat: ImageFormat;
   /** Absolute folder used as the default location of the export dialog. */
   exportDir: string;
+  /** Raster scale used for PNG exports and note images. */
+  exportScale: number;
+  /** Save the project file periodically while the editor is open. */
+  autosave: boolean;
+  /** Number of history snapshots kept per project. */
+  historyLimit: number;
+}
+
+export interface AcTemplate {
+  id: string;
+  file: string;
+  blank?: boolean;
+  name: { zh: string; en: string };
+  description: { zh: string; en: string };
+}
+
+export interface AcVersion {
+  id: string;
+  savedAt: number;
+  text: string;
 }
 
 export interface DirEntry {

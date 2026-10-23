@@ -2,6 +2,7 @@ import {
   assetFsPath,
   putBinaryFile,
   putTextFile,
+  readBinaryFile,
   readDir,
   readTextFile,
   removeFile,
@@ -10,12 +11,13 @@ import {
 import {
   ASSET_PREFIX,
   DATA_ASSET_DIR,
+  HISTORY_DIR,
   IMAGE_EXTENSIONS,
   PROJECT_EXT,
-  TEMPLATE_URL,
+  TEMPLATE_DIR,
   type ImageExtension,
 } from "./constants";
-import type { AcAsset } from "./types";
+import type { AcAsset, AcTemplate, AcVersion, DirEntry } from "./types";
 
 const SUFFIX = /-(\d{14})-([a-z0-9]{7})$/u;
 
@@ -81,6 +83,24 @@ function toAsset(path: string, updated = Date.now()): AcAsset {
   };
 }
 
+function historyStamp(name: string, prefix: string): number {
+  const digits = name.slice(prefix.length, prefix.length + 14);
+  if (!/^\d{14}$/u.test(digits)) return 0;
+  const date = new Date(
+    Number(digits.slice(0, 4)),
+    Number(digits.slice(4, 6)) - 1,
+    Number(digits.slice(6, 8)),
+    Number(digits.slice(8, 10)),
+    Number(digits.slice(10, 12)),
+    Number(digits.slice(12, 14)),
+  );
+  return date.getTime();
+}
+
+function projectBase(source: AcAsset): string {
+  return source.fileName.slice(0, -PROJECT_EXT.length);
+}
+
 export class AssetStore {
   async list(): Promise<AcAsset[]> {
     let entries;
@@ -138,6 +158,28 @@ export class AssetStore {
   async remove(path: string): Promise<void> {
     validateAssetPath(path);
     await removeFile(assetFsPath(path));
+    await this.removeHistory(path);
+  }
+
+  private async removeHistory(path: string): Promise<void> {
+    const prefix = `${projectBase(toAsset(path))}.`;
+    let entries: DirEntry[] = [];
+    try {
+      entries = await readDir(assetFsPath(HISTORY_DIR));
+    } catch {
+      return;
+    }
+    if (!Array.isArray(entries)) return;
+    for (const entry of entries) {
+      if (
+        entry.isDir ||
+        !entry.name.startsWith(prefix) ||
+        !entry.name.endsWith(PROJECT_EXT)
+      ) {
+        continue;
+      }
+      await removeFile(assetFsPath(`${HISTORY_DIR}/${entry.name}`)).catch(() => undefined);
+    }
   }
 
   async saveBinaryAt(
@@ -150,6 +192,192 @@ export class AssetStore {
     const fileName = normalized.slice(normalized.lastIndexOf("/") + 1);
     await putBinaryFile(assetFsPath(normalized), bytes, fileName, mediaType);
     return toAsset(normalized);
+  }
+
+  async readBinary(path: string): Promise<Uint8Array> {
+    validateAssetPath(path);
+    return readBinaryFile(assetFsPath(path));
+  }
+
+  /** Keep the previous contents before a save, at most once per interval. */
+  async snapshot(
+    path: string,
+    text: string,
+    options: { minInterval?: number; limit?: number } = {},
+  ): Promise<void> {
+    const source = toAsset(path);
+    const prefix = `${projectBase(source)}.`;
+    let entries: DirEntry[] = [];
+    try {
+      entries = await readDir(assetFsPath(HISTORY_DIR));
+    } catch {
+      entries = [];
+    }
+    if (!Array.isArray(entries)) entries = [];
+    const history = entries
+      .filter(
+        (entry) =>
+          !entry.isDir && entry.name.startsWith(prefix) && entry.name.endsWith(PROJECT_EXT),
+      )
+      .sort((left, right) => right.name.localeCompare(left.name));
+    const latest = history[0];
+    if (latest) {
+      const savedAt =
+        latest.updated && latest.updated > 0
+          ? latest.updated * 1000
+          : historyStamp(latest.name, prefix);
+      if (options.minInterval && savedAt > 0 && Date.now() - savedAt < options.minInterval) {
+        return;
+      }
+      try {
+        const previous = await readTextFile(assetFsPath(`${HISTORY_DIR}/${latest.name}`));
+        if (previous === text) return;
+      } catch {
+        // A damaged snapshot must not block the project save.
+      }
+    }
+    const name = `${projectBase(source)}.${timestamp()}-${randomId()}${PROJECT_EXT}`;
+    await putTextFile(assetFsPath(`${HISTORY_DIR}/${name}`), text, name);
+    await this.pruneHistory(prefix, options.limit ?? 20);
+  }
+
+  async versions(path: string): Promise<AcVersion[]> {
+    const source = toAsset(path);
+    const prefix = `${projectBase(source)}.`;
+    let entries: DirEntry[] = [];
+    try {
+      entries = await readDir(assetFsPath(HISTORY_DIR));
+    } catch {
+      entries = [];
+    }
+    if (!Array.isArray(entries)) return [];
+    const names = entries
+      .filter(
+        (entry) =>
+          !entry.isDir && entry.name.startsWith(prefix) && entry.name.endsWith(PROJECT_EXT),
+      )
+      .sort((left, right) => right.name.localeCompare(left.name))
+      .slice(0, 100);
+    const versions: AcVersion[] = [];
+    for (const entry of names) {
+      try {
+        const text = await readTextFile(assetFsPath(`${HISTORY_DIR}/${entry.name}`));
+        const savedAt =
+          entry.updated && entry.updated > 0
+            ? entry.updated * 1000
+            : historyStamp(entry.name, prefix) || Date.now();
+        versions.push({ id: entry.name, savedAt, text });
+      } catch {
+        // Skip a snapshot that vanished while reading the list.
+      }
+    }
+    return versions;
+  }
+
+  async readVersion(path: string, id: string): Promise<string> {
+    return readTextFile(assetFsPath(this.versionPath(path, id)));
+  }
+
+  async moveHistory(oldPath: string, newPath: string): Promise<void> {
+    const oldSource = toAsset(oldPath);
+    const newSource = toAsset(newPath);
+    const oldPrefix = `${projectBase(oldSource)}.`;
+    const newPrefix = projectBase(newSource);
+    let entries: DirEntry[] = [];
+    try {
+      entries = await readDir(assetFsPath(HISTORY_DIR));
+    } catch {
+      return;
+    }
+    if (!Array.isArray(entries)) return;
+    for (const entry of entries) {
+      if (
+        entry.isDir ||
+        !entry.name.startsWith(oldPrefix) ||
+        !entry.name.endsWith(PROJECT_EXT)
+      ) {
+        continue;
+      }
+      const nextName = `${newPrefix}.${entry.name.slice(oldPrefix.length)}`;
+      await renameFile(
+        assetFsPath(`${HISTORY_DIR}/${entry.name}`),
+        assetFsPath(`${HISTORY_DIR}/${nextName}`),
+      ).catch(() => undefined);
+    }
+  }
+
+  async restoreVersion(path: string, id: string, limit: number): Promise<AcAsset> {
+    const text = await this.readVersion(path, id);
+    const current = await this.read(path);
+    if (current !== text) {
+      await this.snapshot(path, current, { limit });
+    }
+    return this.saveText(path, text);
+  }
+
+  async branchVersion(path: string, id: string, title: string): Promise<AcAsset> {
+    const text = await this.readVersion(path, id);
+    let body = text;
+    try {
+      const project = JSON.parse(text) as Record<string, unknown>;
+      project.name = sanitizeTitle(title);
+      project.id = `ac-${timestamp()}-${randomId()}`;
+      body = JSON.stringify(project, null, 2);
+    } catch {
+      // Keep the snapshot text when it is not a JSON project.
+    }
+    return this.create(sanitizeTitle(title), body);
+  }
+
+  async createFromTemplate(title: string, template: AcTemplate): Promise<AcAsset> {
+    if (
+      !template.file ||
+      template.file.includes("..") ||
+      template.file.includes("/") ||
+      template.file.includes("\\")
+    ) {
+      throw new Error(`Invalid template file: ${template.file}`);
+    }
+    const project = await this.loadTemplate(template.file);
+    project.name = title;
+    project.id = `ac-${timestamp()}-${randomId()}`;
+    return this.create(title, JSON.stringify(project, null, 2));
+  }
+
+  private versionPath(path: string, id: string): string {
+    const source = toAsset(path);
+    const prefix = `${projectBase(source)}.`;
+    if (
+      !id.startsWith(prefix) ||
+      !id.endsWith(PROJECT_EXT) ||
+      id.includes("..") ||
+      id.includes("/") ||
+      id.includes("\\")
+    ) {
+      throw new Error(`Invalid history version: ${id}`);
+    }
+    return `${HISTORY_DIR}/${id}`;
+  }
+
+  private async pruneHistory(prefix: string, limit: number): Promise<void> {
+    const keep = Math.min(100, Math.max(5, Math.round(limit)));
+    let entries: DirEntry[] = [];
+    try {
+      entries = await readDir(assetFsPath(HISTORY_DIR));
+    } catch {
+      return;
+    }
+    if (!Array.isArray(entries)) return;
+    const stale = entries
+      .filter(
+        (entry) =>
+          !entry.isDir && entry.name.startsWith(prefix) && entry.name.endsWith(PROJECT_EXT),
+      )
+      .sort((left, right) => right.name.localeCompare(left.name))
+      .slice(keep);
+    for (const entry of stale) {
+      await removeFile(assetFsPath(`${HISTORY_DIR}/${entry.name}`)).catch(() => undefined);
+    }
   }
 
   async imageFor(
@@ -173,14 +401,20 @@ export class AssetStore {
   }
 
   private async blankProject(title: string): Promise<string> {
-    const response = await fetch(TEMPLATE_URL, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`Cannot load project template (HTTP ${response.status})`);
-    }
-    const template = (await response.json()) as Record<string, unknown>;
+    const template = await this.loadTemplate("blank.icproj.json");
     template.name = title;
     template.id = `ac-${timestamp()}-${randomId()}`;
     return JSON.stringify(template, null, 2);
+  }
+
+  private async loadTemplate(file: string): Promise<Record<string, unknown>> {
+    const response = await fetch(`${TEMPLATE_DIR}/${encodeURIComponent(file)}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error(`Cannot load project template (HTTP ${response.status})`);
+    }
+    return (await response.json()) as Record<string, unknown>;
   }
 }
 

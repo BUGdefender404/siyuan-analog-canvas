@@ -32,14 +32,21 @@ function blockId(): string {
   return `${stamp}${random}`;
 }
 
-export function previewSrc(asset: string): string {
+export function previewSrc(asset: string, image?: string): string {
   const version = typeof __PLUGIN_VERSION__ === "string" ? __PLUGIN_VERSION__ : "";
-  return `${PREVIEW_PATH}?asset=${encodeURIComponent(asset)}&v=${encodeURIComponent(version)}`;
+  const params = new URLSearchParams({ asset, v: version });
+  if (image) params.set("image", image);
+  return `${PREVIEW_PATH}?${params.toString()}`;
 }
 
-export function insertPreview(protyle: Protyle, asset: AcAsset, height: number): void {
+export function insertPreview(
+  protyle: Protyle,
+  asset: AcAsset,
+  height: number,
+  image?: string,
+): void {
   const id = blockId();
-  const iframe = `<iframe frameborder="0" style="width:100%;height:${Math.max(160, Math.round(height))}px;border:none;display:block;background:transparent;" src="${escapeAttr(previewSrc(asset.path))}"></iframe>`;
+  const iframe = `<iframe frameborder="0" loading="lazy" style="width:100%;height:${Math.max(160, Math.round(height))}px;border:none;display:block;background:transparent;" src="${escapeAttr(previewSrc(asset.path, image))}"></iframe>`;
   const meta = `{: id="${id}" custom-data-assets="${escapeAttr(asset.path)}" custom-ac-title="${escapeAttr(asset.title)}" }`;
   protyle.insert(`${iframe}\n${meta}`, true, true);
 }

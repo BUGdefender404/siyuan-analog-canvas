@@ -42,6 +42,25 @@ export function openSettings(host: SettingsHost): void {
     <span>${escapeHtml(host.i18n.defaultPreviewHeight)}</span>
     <input class="b3-text-field ac-settings__height" type="number" min="160" max="900" step="20" value="${host.settings.previewHeight}" />
   </label>
+  <label class="ac-settings__row">
+    <span>${escapeHtml(host.i18n.exportScale)}</span>
+    <select class="b3-select ac-settings__scale">
+      ${[1, 2, 3, 4, 5, 6]
+        .map(
+          (scale) =>
+            `<option value="${scale}"${scale === host.settings.exportScale ? " selected" : ""}>${scale}×</option>`,
+        )
+        .join("")}
+    </select>
+  </label>
+  <label class="ac-settings__row">
+    <span>${escapeHtml(host.i18n.autosave)}</span>
+    <input class="b3-switch ac-settings__autosave" type="checkbox"${host.settings.autosave ? " checked" : ""} />
+  </label>
+  <label class="ac-settings__row">
+    <span>${escapeHtml(host.i18n.historyLimit)}</span>
+    <input class="b3-text-field ac-settings__history" type="number" min="5" max="100" step="5" value="${host.settings.historyLimit}" />
+  </label>
   <div class="ac-settings__row">
     <span>${escapeHtml(host.i18n.defaultExportDir)}</span>
     <div class="ac-settings__path">
@@ -51,6 +70,9 @@ export function openSettings(host: SettingsHost): void {
   </div>
   <p class="ac-settings__note">${escapeHtml(host.i18n.insertModeHint)}</p>
   <p class="ac-settings__note">${escapeHtml(host.i18n.defaultExportDirHint)}</p>
+  <p class="ac-settings__note">${escapeHtml(host.i18n.exportScaleHint)}</p>
+  <p class="ac-settings__note">${escapeHtml(host.i18n.autosaveHint)}</p>
+  <p class="ac-settings__note">${escapeHtml(host.i18n.historyLimitHint)}</p>
   <p class="ac-settings__note">${escapeHtml(host.i18n.projectStorageHint)} · Analog Canvas ${escapeHtml(
     typeof __PLUGIN_VERSION__ === "string" ? __PLUGIN_VERSION__ : "",
   )}</p>
@@ -65,6 +87,9 @@ export function openSettings(host: SettingsHost): void {
   const content = dialog.element.querySelector(".b3-dialog__content") as HTMLElement;
   const mode = content.querySelector(".ac-settings__mode") as HTMLSelectElement;
   const format = content.querySelector(".ac-settings__format") as HTMLSelectElement;
+  const scale = content.querySelector(".ac-settings__scale") as HTMLSelectElement;
+  const autosave = content.querySelector(".ac-settings__autosave") as HTMLInputElement;
+  const history = content.querySelector(".ac-settings__history") as HTMLInputElement;
   const exportDir = content.querySelector(".ac-settings__export-dir") as HTMLInputElement;
   const browse = content.querySelector(".ac-settings__browse") as HTMLButtonElement;
   mode.value = host.settings.insertMode;
@@ -86,9 +111,18 @@ export function openSettings(host: SettingsHost): void {
       input.focus();
       return;
     }
+    const scaleValue = Number(scale.value);
+    const historyValue = Number(history.value);
     host.settings.insertMode = mode.value === "interactive" ? "interactive" : "image";
     host.settings.imageFormat = format.value === "svg" ? "svg" : "png";
     host.settings.previewHeight = Math.round(value) || DEFAULT_PREVIEW_HEIGHT;
+    host.settings.exportScale = Number.isFinite(scaleValue)
+      ? Math.min(6, Math.max(1, Math.round(scaleValue)))
+      : 3;
+    host.settings.autosave = autosave.checked;
+    host.settings.historyLimit = Number.isFinite(historyValue)
+      ? Math.min(100, Math.max(5, Math.round(historyValue)))
+      : 20;
     host.settings.exportDir = exportDir.value.trim();
     await host.saveSettings(host.settings);
     dialog.destroy();

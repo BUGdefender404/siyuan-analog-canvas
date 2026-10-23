@@ -1,7 +1,8 @@
 import { Dialog, Menu, type Protyle } from "siyuan";
 import { promptText } from "./dialog";
-import { sanitizeTitle } from "./assets";
 import { t, type PluginHost } from "./host";
+import { openHistoryDialog } from "./history";
+import { newFromTemplate, pickTemplate } from "./templates";
 import type { AcAsset } from "./types";
 
 export type PickerMode = "insert" | "open";
@@ -73,6 +74,12 @@ export class AssetPicker {
         content: `<div class="ac-picker">
   <div class="ac-picker__toolbar">
     <input class="b3-text-field ac-picker__search" type="text" placeholder="${escapeHtml(t(this.host, "searchPlaceholder"))}" />
+    <button class="b3-button b3-button--outline ac-picker__gallery" title="${escapeHtml(
+      t(this.host, "openOnlineGallery"),
+    )}">${escapeHtml(t(this.host, "galleryTab"))}</button>
+    <button class="b3-button b3-button--outline ac-picker__import" title="${escapeHtml(
+      t(this.host, "importProjectHint"),
+    )}">${escapeHtml(t(this.host, "importProjectShort"))}</button>
     <button class="b3-button b3-button--outline ac-picker__new">${escapeHtml(t(this.host, "newCircuit"))}</button>
   </div>
   <div class="ac-picker__list" role="listbox"></div>
@@ -183,6 +190,13 @@ export class AssetPicker {
           },
         });
         menu.addItem({
+          icon: "iconClock",
+          label: t(this.host, "history"),
+          click: () => {
+            void openHistoryDialog(this.host, asset);
+          },
+        });
+        menu.addItem({
           icon: "iconEdit",
           label: t(this.host, "rename"),
           click: () => {
@@ -268,25 +282,27 @@ export class AssetPicker {
         }
       });
 
-      root.querySelector(".ac-picker__new")?.addEventListener("click", async () => {
-        const title = await promptText({
-          title: t(this.host, "newCircuit"),
-          label: t(this.host, "namePlaceholder"),
-          value: t(this.host, "newProject"),
-          confirmText: t(this.host, "create"),
-          cancelText: t(this.host, "cancel"),
-          isMobile: this.host.isMobile,
-          validate: (value) =>
-            value.trim() ? null : t(this.host, "nameRequired"),
-        });
-        if (!title) return;
+      root.querySelector(".ac-picker__gallery")?.addEventListener("click", () => {
+        close(null);
+        this.host.openOnlineGallery();
+      });
+
+      root.querySelector(".ac-picker__import")?.addEventListener("click", async () => {
+        if (busy) return;
+        busy = true;
         try {
-          const asset = await this.host.assetStore.create(sanitizeTitle(title));
-          this.host.refreshDock();
-          choose(asset, true);
-        } catch (error) {
-          this.host.notify(error instanceof Error ? error.message : String(error), "error");
+          const asset = await this.host.importProjectFile();
+          if (asset) choose(asset, true);
+        } finally {
+          busy = false;
         }
+      });
+
+      root.querySelector(".ac-picker__new")?.addEventListener("click", async () => {
+        const template = await pickTemplate(this.host);
+        if (!template) return;
+        const asset = await newFromTemplate(this.host, template);
+        if (asset) choose(asset, true);
       });
 
       void loadAssets().catch((error) => {

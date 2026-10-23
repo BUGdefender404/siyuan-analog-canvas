@@ -2,7 +2,7 @@
   "name": "siyuan-analog-canvas",
   "author": "Ray Zhang",
   "url": "https://github.com/BUGdefender404/siyuan-analog-canvas",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "3.1.0",
   "backends": [
     "windows",

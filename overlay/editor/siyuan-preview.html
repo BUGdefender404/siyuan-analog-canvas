@@ -4,9 +4,152 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Analog Canvas Preview</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #fff;
+      }
+      #root {
+        height: 100%;
+      }
+      .preview {
+        position: relative;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px;
+        box-sizing: border-box;
+        background: #fff;
+      }
+      .preview img {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+        display: block;
+      }
+      .preview__message {
+        font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #6b7280;
+        text-align: center;
+        padding: 24px;
+        white-space: pre-wrap;
+      }
+      .preview__edit {
+        position: absolute;
+        right: 10px;
+        top: 10px;
+        border: 1px solid rgba(15, 23, 42, 0.18);
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.94);
+        color: #0f172a;
+        font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding: 7px 11px;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      .preview:hover .preview__edit,
+      .preview__edit:focus {
+        opacity: 1;
+      }
+      .preview__edit:hover {
+        background: #f1f5f9;
+      }
+      @media (hover: none) {
+        .preview__edit {
+          opacity: 1;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="ac-preview-root"></div>
-    <script type="module" src="/src/entries/siyuan-preview.ts"></script>
+    <div id="root"></div>
+    <script>
+      (function () {
+        "use strict";
+        var params = new URLSearchParams(location.search);
+        var asset = params.get("asset") || "";
+        var explicit = params.get("image") || "";
+        var zh = params.get("lang") === "zh";
+        var root = document.getElementById("root");
+        var base = asset.replace(/\.icproj\.json$/iu, "");
+        var candidates = explicit ? [explicit] : [base + ".svg", base + ".png"];
+        var edit = document.createElement("button");
+        edit.type = "button";
+        edit.className = "preview__edit";
+        edit.textContent = zh ? "编辑" : "Edit";
+        edit.style.display = asset ? "" : "none";
+        edit.addEventListener("click", function () {
+          parent.postMessage(
+            { __ac: 1, type: "event", event: "open-editor", payload: { asset: asset } },
+            location.origin,
+          );
+        });
+
+        function pathUrl(path) {
+          return (
+            "/" +
+            path
+              .replace(/^\/+/u, "")
+              .split("/")
+              .map(encodeURIComponent)
+              .join("/")
+          );
+        }
+
+        function showMessage(message) {
+          var box = document.createElement("div");
+          box.className = "preview__message";
+          box.textContent = message;
+          root.replaceChildren(box, edit);
+        }
+
+        function load(index, bust) {
+          if (!asset) {
+            showMessage(zh ? "没有选择电路图。" : "No circuit asset selected.");
+            return;
+          }
+          if (index >= candidates.length) {
+            showMessage(
+              zh
+                ? "还没有可预览的图片。\n请从图片菜单打开编辑器，然后使用「插入到笔记」。"
+                : "No preview image yet.\nOpen the editor from the image menu and use “Insert into note”.",
+            );
+            return;
+          }
+          var candidate = candidates[index];
+          var image = new Image();
+          image.alt = "circuit";
+          image.onload = function () {
+            var figure = document.createElement("div");
+            figure.className = "preview";
+            image.style.maxWidth = "100%";
+            image.style.maxHeight = "100%";
+            figure.append(image, edit);
+            root.replaceChildren(figure);
+          };
+          image.onerror = function () {
+            load(index + 1, bust);
+          };
+          image.src = pathUrl(candidate) + (bust ? "?t=" + Date.now() : "");
+        }
+
+        window.addEventListener("message", function (event) {
+          if (event.origin !== location.origin) return;
+          var message = event.data;
+          if (message && message.__ac === 1 && message.type === "event" && message.event === "refresh") {
+            load(0, true);
+          }
+        });
+
+        load(0, false);
+      })();
+    </script>
   </body>
 </html>

@@ -8,6 +8,23 @@ interface FsModule {
   writeFileSync(path: string, data: Uint8Array): void;
 }
 
+interface ElectronClipboardModule {
+  clipboard: {
+    readText(): string;
+    writeImage(image: unknown): void;
+    write(data: { text?: string; html?: string }): void;
+  };
+  nativeImage: {
+    createFromBuffer(buffer: unknown): unknown;
+  };
+}
+
+interface BufferModule {
+  Buffer: {
+    from(data: Uint8Array): unknown;
+  };
+}
+
 interface SaveDialogResult {
   canceled?: boolean;
   filePath?: string;
@@ -106,6 +123,81 @@ export async function chooseDirectory(options: {
     return result.filePaths[0] ?? null;
   } catch {
     return null;
+  }
+}
+
+function base64Of(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let start = 0; start < bytes.length; start += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(start, start + chunk));
+  }
+  return btoa(binary);
+}
+
+export async function readClipboardText(): Promise<string> {
+  const electron = requireModule<ElectronClipboardModule>("electron");
+  if (electron?.clipboard?.readText) {
+    try {
+      return electron.clipboard.readText();
+    } catch {
+      // Fall through to the browser clipboard.
+    }
+  }
+  try {
+    return await navigator.clipboard.readText();
+  } catch {
+    return "";
+  }
+}
+
+export async function copyPngToClipboard(bytes: Uint8Array): Promise<boolean> {
+  const electron = requireModule<ElectronClipboardModule>("electron");
+  const buffer = requireModule<BufferModule>("buffer");
+  if (electron?.clipboard && electron.nativeImage && buffer?.Buffer) {
+    try {
+      electron.clipboard.writeImage(
+        electron.nativeImage.createFromBuffer(buffer.Buffer.from(bytes)),
+      );
+      return true;
+    } catch {
+      // Fall through to the browser clipboard.
+    }
+  }
+  if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "image/png": new Blob([bytes.slice().buffer], { type: "image/png" }),
+        }),
+      ]);
+      return true;
+    } catch {
+      // The caller reports a failed copy.
+    }
+  }
+  return false;
+}
+
+export async function copySvgToClipboard(text: string): Promise<boolean> {
+  const electron = requireModule<ElectronClipboardModule>("electron");
+  if (electron?.clipboard) {
+    try {
+      electron.clipboard.write({
+        text,
+        html: `<img src="data:image/svg+xml;base64,${base64Of(text)}" alt="circuit">`,
+      });
+      return true;
+    } catch {
+      // Fall through to the browser clipboard.
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
   }
 }
 

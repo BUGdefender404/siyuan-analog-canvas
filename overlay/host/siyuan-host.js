@@ -5,15 +5,25 @@
   "use strict";
 
   var params = new URLSearchParams(location.search);
-  var currentAsset = params.get("asset") || null;
+  var initialAsset = params.get("asset") || null;
+  var currentAsset = initialAsset;
   var insertFlag = params.get("insert") === "1";
   var updateFlag = params.get("update") === "1";
   var exportFormat = params.get("format") === "svg" ? "svg" : "png";
   var zh = params.get("lang") === "zh";
+  var autosaveEnabled = params.get("autosave") !== "0";
+  var scale = Number(params.get("scale"));
+  if (Number.isFinite(scale) && scale >= 1 && scale <= 8) {
+    window.__acExportScale = scale;
+  }
   var launched = false;
   var requestSeq = 0;
   var pending = new Map();
   var saveWaiters = [];
+  var autoSaveRequested = false;
+  var autoSavePending = 0;
+  var lastDirty = null;
+  var RPC_TIMEOUT = 15 * 60 * 1000;
   var exportIntent = "export";
   var exportIntentTimer = 0;
 
@@ -22,7 +32,7 @@
     window.clearTimeout(exportIntentTimer);
     exportIntentTimer = window.setTimeout(function () {
       exportIntent = "export";
-    }, 15000);
+    }, 60000);
   }
 
   function rpc(method, payload) {
@@ -30,7 +40,7 @@
       var id = String(++requestSeq) + ":" + Math.random().toString(36).slice(2);
       var timer = window.setTimeout(function () {
         if (pending.delete(id)) reject(new Error("SiYuan host timeout: " + method));
-      }, 120000);
+      }, RPC_TIMEOUT);
       pending.set(id, {
         resolve: function (value) {
           window.clearTimeout(timer);
@@ -175,6 +185,8 @@
         name = String(named.name || name);
       }
       var binding = payload.binding && payload.binding.id ? String(payload.binding.id) : null;
+      var autosave = autoSaveRequested;
+      autoSaveRequested = false;
       var saved = await rpc("saveProject", {
         // A null binding means this editor tab is a new project. Using the
         // iframe-level currentAsset here would overwrite the project that was
@@ -183,6 +195,7 @@
         text: String(payload.text || ""),
         name: name,
         saveAs: saveAs,
+        autosave: autosave,
       });
       if (saved && saved.status === "saved" && saved.file) {
         currentAsset = saved.file.path;
@@ -208,10 +221,7 @@
     if (route === "project/library-action") {
       text = await bodyText(init);
       var actionBody = JSON.parse(text || "{}");
-      var action = String(actionBody.action || "");
-      if (action === "delete" || action === "purge" || action === "rename") {
-        await rpc("libraryAction", actionBody);
-      }
+      await rpc("libraryAction", actionBody);
       return json({ status: "done" });
     }
 
@@ -245,6 +255,8 @@
 
     if (route === "export") {
       var exportName = decodeURIComponent(header(init, "x-export-name") || "export");
+      var mediaType = header(init, "content-type") || "application/octet-stream";
+      var format = /svg/iu.test(mediaType) || /\.svg$/iu.test(exportName) ? "svg" : "png";
       var bytes = await bodyBytes(init);
       var intent = exportIntent;
       exportIntent = "export";
@@ -252,15 +264,19 @@
       var exported = await rpc("saveExport", {
         asset: currentAsset,
         name: exportName,
-        mediaType: header(init, "content-type") || "application/octet-stream",
+        mediaType: mediaType,
         base64: toBase64(bytes),
         intent: intent,
       });
       if (exported && exported.status === "saved") {
-        window.dispatchEvent(new CustomEvent("ac-export-done"));
+        window.dispatchEvent(
+          new CustomEvent("ac-export-done", { detail: { intent: intent, format: format } }),
+        );
         return json({ status: "saved", path: exported.path });
       }
-      window.dispatchEvent(new CustomEvent("ac-export-cancelled"));
+      window.dispatchEvent(
+        new CustomEvent("ac-export-cancelled", { detail: { intent: intent, format: format } }),
+      );
       return json({ status: "cancelled" });
     }
 
@@ -378,28 +394,36 @@
       });
     if (!save) return false;
     if (save.disabled || save.getAttribute("aria-disabled") === "true") return true;
+    // The insert/update flow counts as a manual save for snapshot policy.
+    autoSaveRequested = false;
     var waiter = waitForSave(12000);
     save.click();
     return waiter;
   }
 
-  function clickExport(format, forNote) {
+  function clickExport(format, intent) {
     return (async function () {
-      setExportIntent(forNote ? "insert" : "export");
+      setExportIntent(intent || "export");
       var saved = await saveBeforeExport();
       if (!saved) {
         setExportIntent("export");
         return false;
       }
       var details = openFileMenu();
-      if (!details) return false;
+      if (!details) {
+        setExportIntent("export");
+        return false;
+      }
       await delay(180);
       var exportButton = Array.prototype.slice
         .call(document.querySelectorAll("button"))
         .find(function (button) {
           return (button.textContent || "").trim().indexOf("Export") === 0 && visible(button);
         });
-      if (!exportButton) return false;
+      if (!exportButton) {
+        setExportIntent("export");
+        return false;
+      }
       if (exportButton.getAttribute("aria-expanded") !== "true") {
         exportButton.click();
         await delay(180);
@@ -419,59 +443,431 @@
     })();
   }
 
-  function addNoteButton() {
-    if (!insertFlag && !updateFlag) return;
-    var button = document.createElement("button");
-    button.type = "button";
-    button.style.cssText =
-      "position:fixed;left:50%;bottom:46px;transform:translateX(-50%);z-index:2147483000;" +
-      "padding:9px 18px;border:0;border-radius:999px;background:#2f81f7;color:#fff;" +
-      'font:600 13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
-      "cursor:pointer;box-shadow:0 6px 20px rgba(31,111,235,.38);";
-    var idle = insertFlag
-      ? zh
-        ? "插入到笔记"
-        : "Insert into note"
-      : zh
-        ? "更新笔记图片"
-        : "Update note image";
-    var busy = zh ? "正在导出…" : "Exporting…";
-    var done = zh ? "已导出" : "Exported";
-    var failed = zh ? "请手动 File → Export" : "Use File → Export manually";
-    button.textContent = idle;
-    var resetTimer = 0;
-    function reset() {
-      button.textContent = idle;
-      button.disabled = false;
+  function isDirty() {
+    return Boolean(document.querySelector('[data-testid="project-unsaved-indicator"]'));
+  }
+
+  function isTyping() {
+    var element = document.activeElement;
+    if (!element) return false;
+    var tag = (element.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || element.isContentEditable === true;
+  }
+
+  function reportDirty() {
+    var dirty = isDirty();
+    if (dirty === lastDirty) return;
+    lastDirty = dirty;
+    parent.postMessage(
+      {
+        __ac: 1,
+        type: "event",
+        event: "dirty",
+        payload: { asset: initialAsset || currentAsset, dirty: dirty },
+      },
+      location.origin,
+    );
+  }
+
+  function hasProjectBinding() {
+    var location = document.querySelector('[data-testid="native-file-location"]');
+    return !location || Boolean(location.getAttribute("title"));
+  }
+
+  function dispatchSave(force) {
+    if (!isDirty()) return false;
+    var typing = isTyping();
+    if (!force && typing) return false;
+    // An unsaved "New Project" has no library path yet; a save would open the
+    // Save As name prompt, which autosave must not trigger by itself.
+    if (!force && !hasProjectBinding()) return false;
+    if (!force && document.querySelector(".command-menu[open]")) return false;
+    if (!force && autoSavePending && Date.now() - autoSavePending < 30000) return false;
+    autoSavePending = Date.now();
+    autoSaveRequested = true;
+    if (force && typing) {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
     }
-    button.addEventListener("click", async function () {
-      if (button.disabled) return;
-      button.disabled = true;
-      button.textContent = busy;
+    window.setTimeout(
+      function () {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "s",
+            code: "KeyS",
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      },
+      force && typing ? 80 : 0,
+    );
+    window.setTimeout(function () {
+      autoSavePending = 0;
+    }, 15000);
+    window.setTimeout(function () {
+      autoSaveRequested = false;
+    }, 20000);
+    return true;
+  }
+
+  function startAutosave() {
+    reportDirty();
+    window.setInterval(reportDirty, 1500);
+    window.setInterval(function () {
+      if (autosaveEnabled) dispatchSave(false);
+    }, 15000);
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden && autosaveEnabled) dispatchSave(false);
+    });
+  }
+
+  window.addEventListener("message", function (event) {
+    if (event.origin !== location.origin) return;
+    var message = event.data;
+    if (!message || message.__ac !== 1 || message.type !== "event") return;
+    if (message.event === "save") dispatchSave(true);
+  });
+
+  window.addEventListener(
+    "keydown",
+    function (event) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      if ((event.key || "").toLowerCase() !== "w") return;
+      event.preventDefault();
+      event.stopPropagation();
+      parent.postMessage(
+        {
+          __ac: 1,
+          type: "event",
+          event: "request-close",
+          payload: { asset: initialAsset || currentAsset },
+        },
+        location.origin,
+      );
+    },
+    true,
+  );
+
+  function actionStyle(primary) {
+    return (
+      "padding:9px 16px;border-radius:999px;font:600 13px/1.2 -apple-system,BlinkMacSystemFont," +
+      '"Segoe UI",sans-serif;cursor:pointer;white-space:nowrap;' +
+      (primary
+        ? "border:0;background:#2f81f7;color:#fff;box-shadow:0 6px 20px rgba(31,111,235,.38);"
+        : "border:1px solid rgba(47,129,247,.42);background:rgba(255,255,255,.97);color:#1f5fbf;")
+    );
+  }
+
+  var insertButton = null;
+  var insertBusy = false;
+  var toastTimer = 0;
+
+  function showToast(message) {
+    var toast = document.getElementById("ac-circuit-toast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "ac-circuit-toast";
+      toast.style.cssText =
+        "position:fixed;left:50%;bottom:112px;transform:translateX(-50%);z-index:2147483001;" +
+        'max-width:min(560px,86vw);padding:9px 14px;border-radius:8px;background:rgba(28,30,33,.94);color:#fff;' +
+        'font:500 12.5px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:center;' +
+        "box-shadow:0 8px 24px rgba(0,0,0,.24);opacity:0;pointer-events:none;transition:opacity .16s ease;";
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.style.opacity = "1";
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(function () {
+      toast.style.opacity = "0";
+    }, 4200);
+  }
+
+  function circuitTarget() {
+    return (
+      document.querySelector('[data-testid="schematic-canvas"]') ||
+      document.querySelector('[aria-label="Schematic canvas"]') ||
+      document.querySelector("main")
+    );
+  }
+
+  function pasteEnvelope(target, text) {
+    var data = new DataTransfer();
+    data.setData("text/plain", text);
+    try {
+      data.setData("application/x-analog-canvas+json", text);
+    } catch (_error) {
+      /* text/plain is sufficient for the editor's paste handler */
+    }
+    var event;
+    try {
+      event = new ClipboardEvent("paste", {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      });
+    } catch (_error) {
+      event = new Event("paste", { bubbles: true, cancelable: true });
       try {
-        var ok = await clickExport(exportFormat, true);
-        if (!ok) {
-          button.textContent = failed;
-          window.setTimeout(reset, 3000);
+        Object.defineProperty(event, "clipboardData", { value: data });
+      } catch (_error2) {
+        return false;
+      }
+    }
+    target.dispatchEvent(event);
+    return event.defaultPrevented === true;
+  }
+
+  function insertCircuitText(text) {
+    if (!text || text.indexOf('"analog-canvas/clipboard"') === -1) return false;
+    try {
+      window.getSelection().removeAllRanges();
+    } catch (_error) {
+      /* No selection to clear. */
+    }
+    var targets = [circuitTarget(), document.body, window];
+    for (var index = 0; index < targets.length; index++) {
+      var target = targets[index];
+      if (!target) continue;
+      try {
+        if (target.focus) target.focus();
+      } catch (_error) {
+        /* Canvas focus is best-effort. */
+      }
+      if (pasteEnvelope(target, text)) return true;
+    }
+    return false;
+  }
+
+  function insertFromClipboard() {
+    if (insertBusy) return;
+    insertBusy = true;
+    var button = insertButton;
+    var idle = button ? button.getAttribute("data-idle") || button.textContent : "";
+    if (button) {
+      button.disabled = true;
+      button.textContent = zh ? "读取剪贴板…" : "Reading clipboard…";
+    }
+    rpc("readCircuitClipboard", {})
+      .then(function (result) {
+        if (!result || result.status !== "ok" || !result.text) {
+          if (button) button.textContent = zh ? "剪贴板里没有电路" : "No circuit in clipboard";
+          showToast(
+            zh
+              ? "请先在在线图库中打开电路，按 Ctrl/Cmd+A 全选、Ctrl/Cmd+C 复制。"
+              : "Open a circuit in the online gallery and copy it with Ctrl/Cmd+A, Ctrl/Cmd+C.",
+          );
+          window.setTimeout(function () {
+            if (button) {
+              button.textContent = idle;
+              button.disabled = false;
+            }
+            insertBusy = false;
+          }, 3600);
           return;
         }
-        window.clearTimeout(resetTimer);
-        resetTimer = window.setTimeout(reset, 15000);
-      } catch (_error) {
-        button.textContent = failed;
-        window.setTimeout(reset, 3000);
-      }
+        var pasted = insertCircuitText(result.text);
+        if (button) {
+          button.textContent = pasted
+            ? zh
+              ? "点击画布放置"
+              : "Click canvas to place"
+            : zh
+              ? "请直接按 Ctrl/Cmd+V"
+              : "Press Ctrl/Cmd+V";
+        }
+        showToast(
+          pasted
+            ? zh
+              ? "已载入电路：移动鼠标选位置，点击画布放置，Esc 取消。"
+              : "Circuit loaded: move the pointer, click the canvas to place, Esc cancels."
+            : zh
+              ? "无法自动插入，请在画布中按 Ctrl/Cmd+V。"
+              : "Could not insert automatically; press Ctrl/Cmd+V on the canvas.",
+        );
+        window.setTimeout(function () {
+          if (button) {
+            button.textContent = idle;
+            button.disabled = false;
+          }
+          insertBusy = false;
+        }, pasted ? 4200 : 3600);
+      })
+      .catch(function () {
+        if (button) {
+          button.textContent = zh ? "读取剪贴板失败" : "Clipboard unavailable";
+        }
+        showToast(
+          zh
+            ? "读取剪贴板失败，请在画布中直接按 Ctrl/Cmd+V。"
+            : "Could not read the clipboard; press Ctrl/Cmd+V on the canvas.",
+        );
+        window.setTimeout(function () {
+          if (button) {
+            button.textContent = idle;
+            button.disabled = false;
+          }
+          insertBusy = false;
+        }, 3600);
+      });
+  }
+
+  function isTypingTarget(target) {
+    if (!(target instanceof Element)) return false;
+    var tag = target.tagName;
+    return (
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      target.isContentEditable === true ||
+      Boolean(
+        target.closest &&
+          target.closest('[contenteditable="true"], .cm-editor, [role="textbox"]'),
+      )
+    );
+  }
+
+  function addNoteButton() {
+    var bar = document.createElement("div");
+    bar.style.cssText =
+      "position:fixed;left:50%;bottom:46px;transform:translateX(-50%);z-index:2147483000;" +
+      "display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;";
+    var busyText = zh ? "正在导出…" : "Exporting…";
+    var failedText = zh ? "请手动 File → Export" : "Use File → Export manually";
+    var actions = [];
+    var active = null;
+
+    function reset(action) {
+      window.clearTimeout(action.resetTimer);
+      action.button.textContent = action.idle;
+      action.button.disabled = false;
+      if (active === action) active = null;
+      setEnabled(true);
+    }
+
+    function setEnabled(enabled) {
+      actions.forEach(function (action) {
+        action.button.disabled = !enabled;
+      });
+    }
+
+    function start(action, format, intent) {
+      if (active) return;
+      active = action;
+      setEnabled(false);
+      window.clearTimeout(action.resetTimer);
+      action.button.textContent = busyText;
+      clickExport(format, intent)
+        .then(function (ok) {
+          if (!ok) {
+            action.button.textContent = failedText;
+            action.resetTimer = window.setTimeout(function () {
+              reset(action);
+            }, 3000);
+            return;
+          }
+          action.resetTimer = window.setTimeout(function () {
+            reset(action);
+          }, 18000);
+        })
+        .catch(function () {
+          action.button.textContent = failedText;
+          action.resetTimer = window.setTimeout(function () {
+            reset(action);
+          }, 3000);
+        });
+    }
+
+    function addAction(idle, format, intent, primary) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.textContent = idle;
+      button.style.cssText = actionStyle(primary);
+      var action = { button: button, idle: idle, format: format, intent: intent, resetTimer: 0 };
+      button.addEventListener("click", function () {
+        start(action, format, intent);
+      });
+      actions.push(action);
+      bar.appendChild(button);
+      return action;
+    }
+
+    if (insertFlag || updateFlag) {
+      addAction(
+        insertFlag ? (zh ? "插入到笔记" : "Insert into note") : zh ? "更新笔记图片" : "Update note image",
+        exportFormat,
+        "insert",
+        true,
+      );
+      addAction(zh ? "复制 PNG" : "Copy PNG", "png", "clipboard", false);
+      addAction(zh ? "复制 SVG" : "Copy SVG", "svg", "clipboard", false);
+    }
+
+    var insert = document.createElement("button");
+    insert.type = "button";
+    insert.textContent = zh ? "插入电路" : "Insert circuit";
+    insert.title = zh
+      ? "从剪贴板插入在线图库中复制的电路"
+      : "Insert a circuit copied from the online gallery";
+    insert.setAttribute("data-idle", insert.textContent);
+    insert.style.cssText = actionStyle(!insertFlag && !updateFlag);
+    insert.addEventListener("click", insertFromClipboard);
+    insertButton = insert;
+    bar.appendChild(insert);
+
+    var gallery = document.createElement("button");
+    gallery.type = "button";
+    gallery.textContent = zh ? "在线图库" : "Online gallery";
+    gallery.title = zh
+      ? "浏览在线图库；登录后打开电路并复制"
+      : "Browse the online gallery; sign in, open a circuit and copy it";
+    gallery.style.cssText = actionStyle(false);
+    gallery.addEventListener("click", function () {
+      parent.postMessage(
+        { __ac: 1, type: "event", event: "open-gallery" },
+        location.origin,
+      );
     });
-    window.addEventListener("ac-export-done", function () {
-      window.clearTimeout(resetTimer);
-      button.textContent = done;
-      window.setTimeout(reset, 2200);
+    bar.appendChild(gallery);
+
+    window.addEventListener(
+      "keydown",
+      function (event) {
+        if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.altKey) return;
+        if ((event.key || "").toLowerCase() !== "v") return;
+        if (isTypingTarget(event.target)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        insertFromClipboard();
+      },
+      true,
+    );
+
+    window.addEventListener("ac-export-done", function (event) {
+      if (!active) return;
+      var detail = event.detail || {};
+      if (detail.intent !== active.intent || detail.format !== active.format) return;
+      window.clearTimeout(active.resetTimer);
+      active.button.textContent = active.intent === "clipboard" ? (zh ? "已复制" : "Copied") : zh ? "已导出" : "Exported";
+      setEnabled(false);
+      var done = active;
+      done.resetTimer = window.setTimeout(function () {
+        reset(done);
+      }, 2200);
     });
-    window.addEventListener("ac-export-cancelled", function () {
-      window.clearTimeout(resetTimer);
-      reset();
+    window.addEventListener("ac-export-cancelled", function (event) {
+      if (!active) return;
+      var detail = event.detail || {};
+      if (detail.intent !== active.intent || detail.format !== active.format) return;
+      reset(active);
     });
-    document.body.appendChild(button);
+    document.body.appendChild(bar);
   }
 
   var lastTitle = "";
@@ -501,12 +897,14 @@
       function () {
         observeTitle();
         addNoteButton();
+        startAutosave();
       },
       { once: true },
     );
   } else {
     observeTitle();
     addNoteButton();
+    startAutosave();
   }
 
   var style = document.createElement("style");

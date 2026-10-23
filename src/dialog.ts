@@ -86,6 +86,54 @@ export function promptText(options: PromptOptions): Promise<string | null> {
   });
 }
 
+export interface CloseGuardOptions {
+  title: string;
+  message: string;
+  saveText: string;
+  discardText: string;
+  cancelText: string;
+  isMobile?: boolean;
+}
+
+export type CloseGuardChoice = "save" | "discard" | "cancel";
+
+export function closeGuardDialog(options: CloseGuardOptions): Promise<CloseGuardChoice> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (value: CloseGuardChoice) => {
+      if (settled) return false;
+      settled = true;
+      resolve(value);
+      return true;
+    };
+    const finish = (value: CloseGuardChoice) => {
+      if (settle(value)) dialog.destroy();
+    };
+    const dialog = new Dialog({
+      title: options.title,
+      content: `<div class="b3-dialog__content ac-dialog">
+  <div class="ac-dialog__message">${escapeHtml(options.message)}</div>
+  <div class="ac-dialog__actions">
+    <button class="b3-button b3-button--cancel">${escapeHtml(options.cancelText)}</button>
+    <div class="fn__space"></div>
+    <button class="b3-button b3-button--outline ac-dialog__discard">${escapeHtml(options.discardText)}</button>
+    <div class="fn__space"></div>
+    <button class="b3-button b3-button--text">${escapeHtml(options.saveText)}</button>
+  </div>
+</div>`,
+      width: options.isMobile ? "92vw" : "460px",
+      destroyCallback: () => settle("cancel"),
+    });
+    const content = dialog.element.querySelector(".b3-dialog__content") as HTMLElement;
+    content.querySelector(".b3-button--text")?.addEventListener("click", () => finish("save"));
+    content.querySelector(".ac-dialog__discard")?.addEventListener("click", () => finish("discard"));
+    content.querySelector(".b3-button--cancel")?.addEventListener("click", () => finish("cancel"));
+    setTimeout(() => {
+      (content.querySelector(".b3-button--text") as HTMLButtonElement | null)?.focus();
+    });
+  });
+}
+
 export function confirmDialog(options: ConfirmOptions): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;

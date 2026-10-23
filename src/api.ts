@@ -44,6 +44,18 @@ export async function readTextFile(path: string): Promise<string> {
   return response.text();
 }
 
+export async function readBinaryFile(path: string): Promise<Uint8Array> {
+  const response = await fetch("/api/file/getFile", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ path }),
+  });
+  if (!response.ok) {
+    throw new Error(`Cannot read ${path} (HTTP ${response.status})`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 export async function putTextFile(path: string, text: string, name: string): Promise<void> {
   const form = new FormData();
   form.append("path", path);
