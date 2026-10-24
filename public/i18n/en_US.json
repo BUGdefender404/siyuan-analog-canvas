@@ -101,13 +101,13 @@
   "onlineGallery": "Online gallery",
   "openOnlineGallery": "Open online gallery",
   "galleryEditorTab": "Online editor",
-  "galleryHint": "The Gallery requires sign-in. Open a circuit, press Ctrl/Cmd+A then Ctrl/Cmd+C on the canvas; back in the circuit editor click Insert circuit (or press Ctrl/Cmd+Shift+V), then click the canvas to place it.",
+  "galleryHint": "Your browser sign-in is not shared with SiYuan; use Sign in inside SiYuan once. Open a circuit, press Ctrl/Cmd+A then Ctrl/Cmd+C on the canvas; back in the circuit editor click Insert circuit (or press Ctrl/Cmd+Shift+V), then click the canvas to place it.",
   "galleryImport": "Import project",
   "galleryExternal": "Browser",
   "galleryLoading": "Loading the online gallery…",
   "galleryExternalFailed": "Could not open a browser window; visit analog-canvas.tokenzhang.com manually.",
   "gallerySettingsOpen": "Open sidebar",
-  "gallerySettingsHint": "Sign in to browse community circuits. Copy a circuit on the online canvas, then click Insert circuit in the circuit editor to place it here.",
+  "gallerySettingsHint": "Sign in to browse community circuits. A browser sign-in is not shared with SiYuan; use Sign in inside SiYuan in the sidebar. Copy a circuit on the online canvas, then click Insert circuit in the circuit editor to place it here.",
   "insertCircuitClipboard": "Insert circuit",
   "insertCircuitClipboardHint": "Insert a circuit copied from the online gallery",
   "clipboardNoCircuit": "No circuit in the clipboard. Copy one in the online gallery first.",
@@ -117,5 +117,11 @@
   "importProjectHint": "Supports .icproj.json files exported from the online gallery",
   "projectImported": "Imported “{name}”",
   "projectImportFailed": "Could not import the project: {message}",
-  "invalidProjectFile": "Not a valid Analog Canvas project file"
+  "invalidProjectFile": "Not a valid Analog Canvas project file",
+  "galleryDockToggle": "Show the Online gallery button in the sidebar",
+  "galleryLogin": "Sign in inside SiYuan",
+  "galleryLoginHint": "Complete sign-in in the opened window; the sidebar will sync automatically.",
+  "galleryLoginSynced": "Sign-in synced to the sidebar",
+  "galleryLoginUnavailable": "This environment cannot open the in-app sign-in window; use Browser instead.",
+  "editorTopBarToggle": "Show the “Open Analog Canvas” button in the top bar"
 }

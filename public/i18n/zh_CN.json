@@ -101,13 +101,13 @@
   "onlineGallery": "在线图库",
   "openOnlineGallery": "打开在线图库",
   "galleryEditorTab": "在线编辑器",
-  "galleryHint": "在线图库需要登录。打开电路后，在画布上按 Ctrl/Cmd+A 全选、Ctrl/Cmd+C 复制；回到电路编辑器点「插入电路」（或 Ctrl/Cmd+Shift+V），再点击画布放置。",
+  "galleryHint": "浏览器里的登录状态不会自动带入思源，请先点上方「思源内登录」完成一次登录。打开电路后，在画布上按 Ctrl/Cmd+A 全选、Ctrl/Cmd+C 复制；回到电路编辑器点「插入电路」（或 Ctrl/Cmd+Shift+V），再点击画布放置。",
   "galleryImport": "导入工程",
   "galleryExternal": "浏览器打开",
   "galleryLoading": "正在加载在线图库…",
   "galleryExternalFailed": "浏览器窗口未能打开，请手动访问 analog-canvas.tokenzhang.com",
   "gallerySettingsOpen": "打开侧边栏",
-  "gallerySettingsHint": "登录后可浏览社区电路。在在线画布复制电路后，回到电路编辑器点「插入电路」即可放到当前图纸。",
+  "gallerySettingsHint": "登录后可浏览社区电路。浏览器中的登录状态不会带入思源，请使用侧边栏的「思源内登录」。在在线画布复制电路后，回到电路编辑器点「插入电路」即可放到当前图纸。",
   "insertCircuitClipboard": "插入电路",
   "insertCircuitClipboardHint": "从剪贴板插入在线图库中复制的电路",
   "clipboardNoCircuit": "剪贴板里没有电路，请先在在线图库中复制一个电路",
@@ -117,5 +117,11 @@
   "importProjectHint": "支持在线图库导出的 .icproj.json 文件",
   "projectImported": "已导入「{name}」",
   "projectImportFailed": "导入失败：{message}",
-  "invalidProjectFile": "不是有效的 Analog Canvas 工程文件"
+  "invalidProjectFile": "不是有效的 Analog Canvas 工程文件",
+  "galleryDockToggle": "侧边栏显示在线图库按钮",
+  "galleryLogin": "思源内登录",
+  "galleryLoginHint": "请在打开的窗口完成登录；登录成功后侧边栏会自动同步。",
+  "galleryLoginSynced": "登录已同步到侧边栏",
+  "galleryLoginUnavailable": "当前环境无法打开思源内登录窗口，请使用「浏览器打开」",
+  "editorTopBarToggle": "顶栏显示「打开 Analog Canvas」按钮"
 }

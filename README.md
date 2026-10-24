@@ -41,10 +41,13 @@ SiYuan workspace — no cloud account is required.
 - **Circuit management**: the picker's **⋯** menu and the circuit dock support
   open, duplicate, rename, delete and version history.
 - **Online Gallery sidebar**: open the hosted Analog Canvas Gallery in a
-  resizable SiYuan sidebar, sign in and browse community circuits. Copy a
-  circuit from the online canvas, then click **Insert circuit** in the local
-  editor to place it on the current drawing. The same entry is available from
-  Settings.
+  resizable SiYuan sidebar from the right-side gallery icon or Settings. Sign in
+  once in the in-app window (email, GitHub or Google), browse community
+  circuits, then copy a circuit from the online canvas and click **Insert
+  circuit** in the local editor. Browser sign-ins are separate and are not
+  shared with SiYuan.
+- **Configurable entries**: Settings can hide the **Open Analog Canvas** top-bar
+  button and the **Online Gallery** sidebar icon for a quieter layout.
 - **Import projects**: bring an `.icproj.json` exported from the online editor
   into `assets/analog-canvas` from the picker or the Gallery sidebar.
 - **Optional interactive preview mode**: insert a preview block instead of a
@@ -82,12 +85,14 @@ SiYuan workspace — no cloud account is required.
 5. The picker's **⋯** menu manages circuits (open, duplicate, rename, delete,
    version history). The left circuit dock offers the same actions.
 6. To borrow a circuit from the community, open **Online Gallery** from the
-   top bar, the picker, the floating button in the circuit editor, or
-   **Settings → Online Gallery**. It opens as a resizable sidebar. Sign in,
-   open a circuit, then select all on its canvas (`Ctrl/Cmd+A`) and copy
-   (`Ctrl/Cmd+C`). Switch back to the circuit editor, click **Insert circuit**
-   (or press `Ctrl/Cmd+Shift+V`) and click the canvas to place the drawing.
-   Only the drawing is inserted; the target project's identity is kept.
+   right sidebar gallery icon, the picker, the circuit dock or
+   **Settings → Online Gallery**. It opens as a resizable sidebar. Click
+   **Sign in inside SiYuan** once: the in-app window supports email codes and
+   GitHub/Google OAuth. Back in the sidebar, open a circuit, then select all on
+   its canvas (`Ctrl/Cmd+A`) and copy (`Ctrl/Cmd+C`). Switch back to the circuit
+   editor, click **Insert circuit** (or press `Ctrl/Cmd+Shift+V`) and click the
+   canvas to place the drawing. Only the drawing is inserted; the target
+   project's identity is kept.
 7. If copying from the embedded sidebar is not possible, use **Browser** to
    open the Gallery normally, or use **File → Export → Project File…** there
    and **Import** in the picker.
@@ -162,10 +167,11 @@ while iterating on plugin code.
   user-component library, PDF export and the RNL format are not bundled. The
   Online Gallery sidebar is an optional online surface; offline SVG/PNG output,
   SPICE/Spectre netlist export and hierarchy still work.
-- The Online Gallery requires account sign-in and internet access. Because it
-  is a cross-origin page, circuits are transferred with the clipboard rather
-  than by direct drag-and-drop; if sign-in or copy is blocked in the sidebar,
-  open the Gallery in a normal browser and use the project-file import
+- The Online Gallery requires account sign-in and internet access. Browser and
+  SiYuan use separate cookie stores, so a browser sign-in is not shared with the
+  sidebar; use **Sign in inside SiYuan** once. Circuits are transferred with the
+  clipboard rather than by direct drag-and-drop; if copying is blocked in the
+  sidebar, open the Gallery in a normal browser and use the project-file import
   fallback.
 - Use one circuit per editor tab. The editor can open several project tabs
   internally, but the SiYuan tab tracks the first project for its title and

@@ -65,6 +65,8 @@ export default class AnalogCanvasPlugin
     exportScale: 3,
     autosave: true,
     historyLimit: 20,
+    editorTopBar: true,
+    galleryDock: true,
   };
   assetStore = new AssetStore();
   isMobile = false;
@@ -78,6 +80,7 @@ export default class AnalogCanvasPlugin
   private dirtyAssets = new Set<string>();
   private dirtyWaiters = new Map<string, Array<(dirty: boolean) => void>>();
   private allowCloseTab = "";
+  private topBar?: HTMLElement;
 
   async onload(): Promise<void> {
     this.isMobile = ["mobile", "browser-mobile"].includes(getFrontend());
@@ -171,20 +174,12 @@ export default class AnalogCanvasPlugin
     });
 
     if (!this.isMobile) {
-      this.addTopBar({
+      this.topBar = this.addTopBar({
         icon: ICON_ID,
         title: this.i18n.openEditor,
         position: "right",
         callback: () => {
           void this.picker.pick("open");
-        },
-      });
-      this.addTopBar({
-        icon: GALLERY_ICON_ID,
-        title: this.i18n.onlineGallery,
-        position: "right",
-        callback: () => {
-          this.openOnlineGallery();
         },
       });
       this.addDock({
@@ -222,6 +217,8 @@ export default class AnalogCanvasPlugin
       });
     }
 
+    window.setTimeout(() => this.applyGalleryVisibility(), 0);
+
     this.eventBus.on("open-siyuan-url-plugin", this.handleOpenUrl);
     this.eventBus.on("open-menu-image", this.handleImageMenu);
     window.addEventListener("beforeunload", this.handleBeforeUnload);
@@ -244,6 +241,30 @@ export default class AnalogCanvasPlugin
 
   async saveSettings(settings: AcSettings): Promise<void> {
     await this.saveData("settings", settings);
+    this.applyGalleryVisibility();
+  }
+
+  private applyGalleryVisibility(retries = 10): void {
+    if (this.topBar) {
+      this.topBar.style.display = this.settings.editorTopBar ? "" : "none";
+    }
+    const item = document.querySelector(
+      `.dock__item[data-type="${CSS.escape(GALLERY_DOCK_TYPE)}"]`,
+    ) as HTMLElement | null;
+    if (!item) {
+      if (retries > 0) {
+        window.setTimeout(() => this.applyGalleryVisibility(retries - 1), 100);
+      }
+      return;
+    }
+    if (this.settings.galleryDock) {
+      delete item.dataset.acGalleryHidden;
+      item.style.display = "";
+      return;
+    }
+    if (item.classList.contains("dock__item--active")) item.click();
+    item.dataset.acGalleryHidden = "1";
+    item.style.display = "none";
   }
 
   private async loadSettings(): Promise<void> {
@@ -269,6 +290,8 @@ export default class AnalogCanvasPlugin
       historyLimit: Number.isFinite(Number(value?.historyLimit))
         ? Math.min(100, Math.max(5, Math.round(Number(value?.historyLimit))))
         : 20,
+      editorTopBar: value?.editorTopBar !== false,
+      galleryDock: value?.galleryDock !== false,
     };
   }
 

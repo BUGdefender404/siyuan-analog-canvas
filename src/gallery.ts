@@ -20,6 +20,84 @@ export interface GalleryHost {
 
 type GalleryView = "home" | "editor";
 
+const GALLERY_SESSION_COOKIE = "icm_session";
+
+interface RemoteCookie {
+  name: string;
+  value: string;
+  path: string;
+  httpOnly: boolean;
+  expirationDate?: number;
+  sameSite: string;
+}
+
+interface RemoteCookies {
+  get(filter: { url: string; name: string }): Promise<RemoteCookie[]>;
+  set(details: {
+    url: string;
+    name: string;
+    value: string;
+    path: string;
+    secure: boolean;
+    httpOnly: boolean;
+    sameSite: string;
+    expirationDate?: number;
+  }): Promise<void>;
+}
+
+interface RemoteWindow {
+  isDestroyed(): boolean;
+  close(): void;
+  focus(): void;
+  loadURL(url: string): void;
+}
+
+interface FrameNavigateEvent {
+  url: string;
+  isMainFrame: boolean;
+  preventDefault(): void;
+}
+
+interface RemoteWebContents {
+  on(event: "will-frame-navigate", listener: (event: FrameNavigateEvent) => void): void;
+  on(
+    event: "did-start-navigation",
+    listener: (details: { url: string; isMainFrame: boolean }) => void,
+  ): void;
+}
+
+interface ElectronRemote {
+  session?: { defaultSession?: { cookies?: RemoteCookies } };
+  BrowserWindow?: new (options: Record<string, unknown>) => RemoteWindow;
+  getCurrentWebContents?: () => RemoteWebContents;
+}
+
+function electronRemote(): ElectronRemote | null {
+  const request = (globalThis as { require?: (id: string) => unknown }).require;
+  if (typeof request !== "function") return null;
+  try {
+    return request("@electron/remote") as ElectronRemote;
+  } catch {
+    return null;
+  }
+}
+
+function remoteCookies(): RemoteCookies | null {
+  try {
+    return electronRemote()?.session?.defaultSession?.cookies ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function canOpenLoginWindow(): boolean {
+  try {
+    return Boolean(electronRemote()?.BrowserWindow);
+  } catch {
+    return false;
+  }
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/gu, "&amp;")
@@ -40,6 +118,14 @@ export class GalleryManager {
   private tabId = "";
   private dialog?: Dialog;
   private view: GalleryView = "home";
+  private sessionTimer = 0;
+  private lastSessionCookie = "";
+  private sessionCheckDisabled = false;
+  private sessionErrorLogged = false;
+  private loginWindow?: RemoteWindow;
+  private oauthWatch = false;
+  private lastLoginTarget = "";
+  private lastLoginAt = 0;
 
   constructor(host: GalleryHost) {
     this.host = host;
@@ -82,12 +168,14 @@ export class GalleryManager {
     this.element = element;
     this.tabId = tabId || this.tabId;
     this.prepare(element);
+    this.watchOAuthNavigation();
     this.render(element);
   }
 
   mountDock(element: HTMLElement): void {
     this.dockElement = element;
     this.prepare(element);
+    this.watchOAuthNavigation();
     this.render(element);
   }
 
@@ -95,11 +183,15 @@ export class GalleryManager {
     if (!tabId || tabId === this.tabId) {
       this.element = null;
       this.tabId = "";
+      this.stopSessionWatch();
     }
   }
 
   detachDock(element?: HTMLElement): void {
-    if (!element || element === this.dockElement) this.dockElement = null;
+    if (!element || element === this.dockElement) {
+      this.dockElement = null;
+      this.stopSessionWatch();
+    }
   }
 
   private prepare(element: HTMLElement): void {
@@ -115,7 +207,15 @@ export class GalleryManager {
     const item = document.querySelector(
       `.dock__item[data-type="${CSS.escape(GALLERY_DOCK_TYPE)}"]`,
     ) as HTMLElement | null;
-    if (!item || item.offsetParent === null) return false;
+    if (!item) return false;
+    if (item.dataset.acGalleryHidden === "1") {
+      item.style.display = "";
+      if (!item.classList.contains("dock__item--active")) item.click();
+      item.dataset.acGalleryHidden = "1";
+      item.style.display = "none";
+      return true;
+    }
+    if (item.offsetParent === null) return false;
     if (!item.classList.contains("dock__item--active")) item.click();
     return true;
   }
@@ -151,11 +251,165 @@ export class GalleryManager {
     return true;
   }
 
+  private isGalleryMounted(): boolean {
+    return Boolean(this.element?.isConnected || this.dockElement?.isConnected);
+  }
+
+  private oauthTarget(url: string): string | null {
+    if (
+      /^https:\/\/analog-canvas\.tokenzhang\.com\/api\/auth\/(?:github|google)\/start(?:[?#]|$)/u.test(
+        url,
+      )
+    ) {
+      return url;
+    }
+    if (/^https:\/\/github\.com\/login\/oauth\/authorize(?:[?#]|$)/u.test(url)) {
+      return `${GALLERY_HOME_URL}api/auth/github/start`;
+    }
+    if (/^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth(?:[?#]|$)/u.test(url)) {
+      return `${GALLERY_HOME_URL}api/auth/google/start`;
+    }
+    return null;
+  }
+
+  private watchOAuthNavigation(): void {
+    if (this.oauthWatch) return;
+    this.oauthWatch = true;
+    try {
+      const contents = electronRemote()?.getCurrentWebContents?.();
+      if (!contents) return;
+      contents.on("will-frame-navigate", (event) => {
+        try {
+          if (!this.isGalleryMounted() || event.isMainFrame) return;
+          const target = this.oauthTarget(event.url);
+          if (!target) return;
+          event.preventDefault();
+          this.openLoginWindow(target);
+        } catch (error) {
+          console.info("[siyuan-analog-canvas] could not redirect gallery OAuth navigation", error);
+        }
+      });
+      contents.on("did-start-navigation", (details) => {
+        try {
+          if (!this.isGalleryMounted() || details.isMainFrame) return;
+          const target = this.oauthTarget(details.url);
+          if (target) this.openLoginWindow(target);
+        } catch (error) {
+          console.info("[siyuan-analog-canvas] could not open gallery OAuth window", error);
+        }
+      });
+    } catch (error) {
+      console.info("[siyuan-analog-canvas] could not watch gallery OAuth navigation", error);
+    }
+  }
+
+  private startSessionWatch(frame: HTMLIFrameElement): void {
+    this.stopSessionWatch();
+    this.sessionTimer = window.setInterval(() => {
+      void this.repairSessionCookie(frame);
+    }, 3000);
+  }
+
+  private stopSessionWatch(): void {
+    if (!this.sessionTimer) return;
+    window.clearInterval(this.sessionTimer);
+    this.sessionTimer = 0;
+  }
+
+  private async repairSessionCookie(frame: HTMLIFrameElement): Promise<void> {
+    if (this.sessionCheckDisabled || !frame.isConnected) return;
+    const cookies = remoteCookies();
+    if (!cookies) {
+      this.sessionCheckDisabled = true;
+      return;
+    }
+    try {
+      const found = await cookies.get({
+        url: GALLERY_HOME_URL,
+        name: GALLERY_SESSION_COOKIE,
+      });
+      const cookie = found.find((item) => item.sameSite !== "no_restriction");
+      if (!cookie || cookie.value === this.lastSessionCookie) return;
+      const current = frame.src || galleryUrl(this.view);
+      await cookies.set({
+        url: GALLERY_HOME_URL,
+        name: cookie.name,
+        value: cookie.value,
+        path: cookie.path || "/",
+        secure: true,
+        httpOnly: true,
+        sameSite: "no_restriction",
+        ...(typeof cookie.expirationDate === "number"
+          ? { expirationDate: cookie.expirationDate }
+          : {}),
+      });
+      this.lastSessionCookie = cookie.value;
+      if (this.loginWindow && !this.loginWindow.isDestroyed()) {
+        this.host.notify(t(this.host, "galleryLoginSynced"), "info");
+      }
+      // Navigating through about:blank forces a cross-origin reload.
+      frame.src = "about:blank";
+      window.setTimeout(() => {
+        if (frame.isConnected) frame.src = current;
+      }, 50);
+    } catch (error) {
+      if (!this.sessionErrorLogged) {
+        this.sessionErrorLogged = true;
+        console.info("[siyuan-analog-canvas] gallery session check failed", error);
+      }
+    }
+  }
+
+  private openLoginWindow(url?: string): void {
+    if (!canOpenLoginWindow()) {
+      this.host.notify(t(this.host, "galleryLoginUnavailable"), "error");
+      return;
+    }
+    if (url) {
+      const now = Date.now();
+      if (url === this.lastLoginTarget && now - this.lastLoginAt < 2000) return;
+      this.lastLoginTarget = url;
+      this.lastLoginAt = now;
+    }
+    try {
+      if (this.loginWindow && !this.loginWindow.isDestroyed()) {
+        if (url) this.loginWindow.loadURL(url);
+        this.loginWindow.focus();
+        return;
+      }
+      const remote = electronRemote();
+      if (!remote?.BrowserWindow) {
+        this.host.notify(t(this.host, "galleryLoginUnavailable"), "error");
+        return;
+      }
+      const win = new remote.BrowserWindow({
+        width: 520,
+        height: 780,
+        title: "Analog Canvas",
+        autoHideMenuBar: true,
+        backgroundColor: "#ffffff",
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+        },
+      });
+      this.loginWindow = win;
+      win.loadURL(url ?? GALLERY_HOME_URL);
+      win.focus();
+      this.host.notify(t(this.host, "galleryLoginHint"), "info");
+    } catch (error) {
+      console.info("[siyuan-analog-canvas] could not open the gallery login window", error);
+      this.host.notify(t(this.host, "galleryLoginUnavailable"), "error");
+    }
+  }
+
   private render(element: HTMLElement): void {
     // A dock may be initialized more than once; only rebuild when its DOM was
     // actually cleared. A stale dataset flag previously left a blank tab.
     if (element.querySelector(".ac-gallery")) return;
     const home = galleryUrl("home");
+    const loginAvailable = !this.host.isMobile && canOpenLoginWindow();
     element.innerHTML = `<div class="ac-gallery">
   <div class="ac-gallery__toolbar">
     <div class="ac-gallery__views" role="group" aria-label="${escapeHtml(
@@ -175,6 +429,13 @@ export class GalleryManager {
       <button type="button" class="b3-button b3-button--outline ac-gallery__refresh">${escapeHtml(
         t(this.host, "refresh"),
       )}</button>
+      ${
+        loginAvailable
+          ? `<button type="button" class="b3-button b3-button--outline ac-gallery__login">${escapeHtml(
+              t(this.host, "galleryLogin"),
+            )}</button>`
+          : ""
+      }
       <button type="button" class="b3-button b3-button--outline ac-gallery__external">${escapeHtml(
         t(this.host, "galleryExternal"),
       )}</button>
@@ -204,7 +465,9 @@ export class GalleryManager {
     };
     frame.addEventListener("load", () => {
       stage.classList.add("is-loaded");
+      void this.repairSessionCookie(frame);
     });
+    this.startSessionWatch(frame);
     views.forEach((button) => {
       button.addEventListener("click", () => {
         const view = button.dataset.view === "editor" ? "editor" : "home";
@@ -220,6 +483,9 @@ export class GalleryManager {
     root.querySelector(".ac-gallery__refresh")?.addEventListener("click", () => {
       showLoading();
       frame.src = galleryUrl(this.view);
+    });
+    root.querySelector(".ac-gallery__login")?.addEventListener("click", () => {
+      this.openLoginWindow();
     });
     root.querySelector(".ac-gallery__external")?.addEventListener("click", () => {
       const opened = window.open(galleryUrl(this.view), "_blank");

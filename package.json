@@ -1,6 +1,6 @@
 {
   "name": "siyuan-analog-canvas",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Analog Canvas schematic editor for SiYuan",
   "repository": "https://github.com/BUGdefender404/siyuan-analog-canvas",

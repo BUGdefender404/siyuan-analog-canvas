@@ -23,6 +23,10 @@ export interface AcSettings {
   autosave: boolean;
   /** Number of history snapshots kept per project. */
   historyLimit: number;
+  /** Show the Analog Canvas editor button in the top bar. */
+  editorTopBar: boolean;
+  /** Show the online gallery icon in the right dock bar. */
+  galleryDock: boolean;
 }
 
 export interface AcTemplate {

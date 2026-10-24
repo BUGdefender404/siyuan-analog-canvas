@@ -69,6 +69,14 @@ export function openSettings(host: SettingsHost): void {
     )}</button>
   </div>
   <p class="ac-settings__note">${escapeHtml(host.i18n.gallerySettingsHint)}</p>
+  <label class="ac-settings__row">
+    <span>${escapeHtml(host.i18n.editorTopBarToggle)}</span>
+    <input class="b3-switch ac-settings__topbar" type="checkbox"${host.settings.editorTopBar ? " checked" : ""} />
+  </label>
+  <label class="ac-settings__row">
+    <span>${escapeHtml(host.i18n.galleryDockToggle)}</span>
+    <input class="b3-switch ac-settings__gallery-dock" type="checkbox"${host.settings.galleryDock ? " checked" : ""} />
+  </label>
   <div class="ac-settings__row">
     <span>${escapeHtml(host.i18n.defaultExportDir)}</span>
     <div class="ac-settings__path">
@@ -98,6 +106,8 @@ export function openSettings(host: SettingsHost): void {
   const scale = content.querySelector(".ac-settings__scale") as HTMLSelectElement;
   const autosave = content.querySelector(".ac-settings__autosave") as HTMLInputElement;
   const history = content.querySelector(".ac-settings__history") as HTMLInputElement;
+  const galleryDock = content.querySelector(".ac-settings__gallery-dock") as HTMLInputElement;
+  const topBar = content.querySelector(".ac-settings__topbar") as HTMLInputElement;
   const exportDir = content.querySelector(".ac-settings__export-dir") as HTMLInputElement;
   const browse = content.querySelector(".ac-settings__browse") as HTMLButtonElement;
   mode.value = host.settings.insertMode;
@@ -135,6 +145,8 @@ export function openSettings(host: SettingsHost): void {
     host.settings.historyLimit = Number.isFinite(historyValue)
       ? Math.min(100, Math.max(5, Math.round(historyValue)))
       : 20;
+    host.settings.editorTopBar = topBar.checked;
+    host.settings.galleryDock = galleryDock.checked;
     host.settings.exportDir = exportDir.value.trim();
     await host.saveSettings(host.settings);
     dialog.destroy();

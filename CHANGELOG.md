@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.1 — 2026-10-24
+
+- **Online Gallery sign-in inside SiYuan**: the Gallery now opens a first-party
+  Electron sign-in window so its session cookie can be used by the sidebar.
+  Email codes work there, and GitHub/Google sign-in opens in the same window.
+  Browser login state is intentionally not shared (separate cookie stores).
+- **OAuth from the embedded Gallery**: clicking GitHub or Google in the
+  sidebar's Gallery sign-in panel now opens the in-app sign-in window instead
+  of trying to load the provider inside the cross-origin iframe.
+- **Session cookie compatibility**: the Gallery session cookie is rewritten to
+  `SameSite=None; Secure` for the embedded sidebar and the frame reloads when
+  the sign-in completes.
+- **Configurable chrome**: Settings can show or hide the **Open Analog Canvas**
+  top-bar button and the **Online Gallery** right-sidebar icon. The separate
+  Gallery top-bar button was removed.
+- Loading state fixes for the Gallery panel; the i18n hint now explains that a
+  browser sign-in is not shared with SiYuan.
+
 ## 0.2.0 — 2026-10-24
 
 - **Common circuit templates**: blank, common-source amplifier, current-mirror
