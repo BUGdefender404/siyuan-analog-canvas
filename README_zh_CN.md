@@ -6,8 +6,6 @@
 [Analog Canvas](https://github.com/cascode-ai/analog-canvas) 编辑器，完全离线
 可用，不需要注册账号，电路文件直接保存在思源工作空间里。
 
-![Analog Canvas 嵌入思源](./preview.png)
-
 ## 功能
 
 - **画完直接插入为普通图片**：默认 PNG，可选 SVG；图片就像思源里的普通图片，
@@ -83,6 +81,18 @@
 
 在线图库是托管服务，不属于离线编辑器包的一部分；使用它需要联网并登录
 图库账号，其中的电路仍受各自作者条款约束。
+
+### 在线图库
+
+在线图库在思源右侧边栏中打开，登录后可浏览社区电路。
+
+![在线图库的社区电路列表](https://gcore.jsdelivr.net/gh/BUGdefender404/siyuan-analog-canvas@main/docs/images/gallery.png)
+
+*图库内容与托管页面一致；在思源中嵌入右侧边栏，未登录时会提示先登录。*
+
+![在线图库登录方式](https://gcore.jsdelivr.net/gh/BUGdefender404/siyuan-analog-canvas@main/docs/images/gallery-login.png)
+
+*登录支持 GitHub、Google 和邮箱验证码；浏览器登录状态不会自动带入思源。*
 
 ## 存储与迁移
 

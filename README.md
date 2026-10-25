@@ -7,8 +7,6 @@ Draw professional analog schematics inside SiYuan with the open-source
 is bundled with the plugin, so it works offline and saves projects into your
 SiYuan workspace — no cloud account is required.
 
-![Analog Canvas in SiYuan](./preview.png)
-
 ## Features
 
 - **Insert the finished drawing as a normal image** in the note — PNG by
@@ -105,6 +103,19 @@ note when you want the image in the document.
 The Online Gallery is a hosted service, not part of the bundled offline
 editor. It needs an internet connection and a Gallery account; circuits stay
 subject to their authors' terms.
+
+### Online Gallery
+
+The Gallery opens in a resizable right sidebar. After signing in, browse
+community circuits and copy one onto the local canvas.
+
+![Online Gallery community circuit list](https://gcore.jsdelivr.net/gh/BUGdefender404/siyuan-analog-canvas@main/docs/images/gallery.png)
+
+*The sidebar embeds the hosted Gallery page; signed-out users are prompted to sign in.*
+
+![Online Gallery sign-in options](https://gcore.jsdelivr.net/gh/BUGdefender404/siyuan-analog-canvas@main/docs/images/gallery-login.png)
+
+*Sign in with GitHub, Google, or an email code. Browser sign-ins are not shared with SiYuan.*
 
 ## Storage and portability
 

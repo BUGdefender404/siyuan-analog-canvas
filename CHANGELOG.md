@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.2 — 2026-10-25
+
+- **Marketplace README cleanup**: removed the duplicated `preview.png` at the
+  top of both READMEs; the bazaar already renders the package preview.
+- **Gallery screenshots in the docs**: added community-gallery and sign-in
+  screenshots under `docs/images/` and documented them in the Online Gallery
+  section. The images use the `gcore.jsdelivr.net` mirror so they are not
+  rewritten to the blocked `cdn.jsdelivr.net` host in the bazaar detail page.
+- No plugin code changes; this is a documentation-only patch release.
+
 ## 0.2.1 — 2026-10-24
 
 - **Online Gallery sign-in inside SiYuan**: the Gallery now opens a first-party
